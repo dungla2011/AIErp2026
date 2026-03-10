@@ -5,7 +5,7 @@
 <h1 align="center">Agentic RAG for Dummies</h1>
 
 <p align="center">
-  <strong>Build a modular Agentic RAG system with LangGraph, conversation memory, and human-in-the-loop query clarification</strong>
+  <strong>Build a modular Agentic RAG system with LangGraph, conversation memory, and human-in-the-loop query clarification</strong> 
 </p>
 
 <p align="center">
