@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.rar
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter
+.ipynb_checkpoints/
+.jupyter/
+*.ipynb_checkpoints
+
+# Database & Cache
+qdrant_db/
+*.db
+*.sqlite
+*.sqlite3
+*.cache/
+
+# Data & Docs
+markdown/
+markdown_docs/
+parent_store/
+docs/
+assets/tmp/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS
+.DS_Store
+Thumbs.db
+*.lnk
+
+# Project specific
+.env
+secrets.json
+config.local.py
+*.pem
+*.key
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Temp
+.tmp/
+tmp/
+temp/
+*.tmp
