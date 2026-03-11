@@ -1,4 +1,7 @@
 from typing import List, Tuple, Dict
+from pathlib import Path
+import glob
+import os
 import uuid
 import config
 
@@ -8,9 +11,10 @@ class Document:
     Simple document structure
     """
 
-    def __init__(self, page_content: str, metadata: Dict = None):
+    def __init__(self, page_content: str, metadata: Dict = None, id: str = None):
         self.page_content = page_content
         self.metadata = metadata or {}
+        self.id = id or str(uuid.uuid4())
 
 
 class DocumentChunker:
@@ -94,5 +98,33 @@ class DocumentChunker:
                     )
 
                     child_docs.append(child_doc)
+
+        return parent_docs, child_docs
+    
+    def create_chunks(self, path_dir=config.MARKDOWN_DIR):
+    
+        all_parent_chunks, all_child_chunks = [], []
+
+        for doc_path_str in sorted(glob.glob(os.path.join(path_dir, "*.md"))):
+            doc_path = Path(doc_path_str)
+            parent_chunks, child_chunks = self.create_chunks_single(doc_path)
+
+            all_parent_chunks.extend(parent_chunks)
+            all_child_chunks.extend(child_chunks)
+
+        return all_parent_chunks, all_child_chunks
+
+    def create_chunks_single(self, md_path):
+
+        md_path = Path(md_path)
+
+        with open(md_path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        doc = Document(
+            page_content=text,
+            metadata={"source": md_path.name}
+        )
+        parent_docs, child_docs = self.split_documents([doc])
 
         return parent_docs, child_docs
