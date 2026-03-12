@@ -8,12 +8,34 @@ from schemas.ai.query_analysis import QueryAnalysis
 
 # =========================
 # Custom reducers
+# Trong LangGraph, reducer quyết định cách merge dữ liệu mới vào state cũ 
+# khi nhiều node cùng ghi vào một field. 
+# Nếu không có reducer thì LangGraph sẽ overwrite (ghi đè).
+# Hai hàm này dùng để merge state khi nhiều node cập nhật cùng field:
+# accumulate_or_reset → append list hoặc reset
+# set_union           → gộp set không trùng
 # =========================
-def accumulate_or_reset(existing: List[dict], new: List[dict]) -> List[dict]:
-    if new and any(item.get('__reset__') for item in new):
-        return []
-    return existing + new
 
+# Hàm này dùng cho list kết quả của agent.
+def accumulate_or_reset(existing: List[dict], new: List[dict]) -> List[dict]:
+
+    if not new:
+        return existing
+
+    reset = any(item.get('__reset__') for item in new)
+
+    filtered = [
+        item for item in new
+        if isinstance(item, dict) and not item.get('__reset__')
+    ]
+
+    if reset:
+        return filtered
+
+    return existing + filtered
+
+
+# Hàm này dùng để gộp 2 set lại với nhau.
 def set_union(a: Set[str], b: Set[str]) -> Set[str]:
     return a | b
 
@@ -34,7 +56,6 @@ class State(MessagesState):
 
     # --- Query analysis ---
     analysis: Optional[QueryAnalysis] = None
-    queryAnalysis: Optional[QueryAnalysis] = None
 
     # --- Router output ---
     agent_domain: str = ""
@@ -45,10 +66,7 @@ class State(MessagesState):
     plan: str = ""
 
     # --- Retrieval hints ---
-    questions: List[str] = []
-    entities: List[str] = []
-    keywords: List[str] = []
-    filters: List[str] = []
+    retrieval_keys: Annotated[Set[str], set_union] = set()
 
     # --- Agent answers ---
     agent_answers: Annotated[List[dict], accumulate_or_reset] = []
@@ -60,13 +78,7 @@ class State(MessagesState):
 # =========================
 # PER-AGENT STATE
 # =========================
-
 class AgentState(MessagesState):
-
-    # --- Query ---
-    question: str = ""
-    originalQuery: str = ""
-    rewrittenQuestions: List[str] = []
 
     # --- Multi-question index ---
     question_index: int = 0
@@ -78,7 +90,7 @@ class AgentState(MessagesState):
     plan: str = ""
 
     # --- Query analysis ---
-    queryAnalysis: Optional[QueryAnalysis] = None
+    analysis: Optional[QueryAnalysis] = None
 
     # --- User identity ---
     user_id: Optional[str] = None

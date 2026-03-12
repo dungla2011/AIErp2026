@@ -116,21 +116,10 @@ def analyze_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
     print("🟢 NODE → analyze_query")
 
     messages = state.get("messages", [])
-
-    query = (
-        state.get("originalQuery")
-        or state.get("question")
-        or (messages[-1].content if messages else "")
-    )
-    query = query.strip()
+    query = messages[-1].content.strip() if messages else ""
 
     if not query:
-        print("analyze_query: empty query")
-
-        return {
-            "analysis": QueryAnalysis(query=""),
-            "originalQuery": "",
-        }
+        return {"analysis": QueryAnalysis(query="")}
 
     system_prompt = """
         You are a senior AI query analysis engine for an ERP assistant.
@@ -160,21 +149,8 @@ def analyze_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
             HumanMessage(content=user_prompt),
         ])
 
-    except ValidationError:
-        print("analyze_query: validation fallback")
-
-        analysis = QueryAnalysis(
-            query=query,
-            questions=[query],
-            intent="general",
-            domain="general",
-            confidence=0.3
-        )
-
     except Exception as e:
-
         print("analyze_query error:", e)
-
         analysis = QueryAnalysis(
             query=query,
             questions=[query],
@@ -189,15 +165,9 @@ def analyze_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
 
     analysis.questions = analysis.questions[:5]
 
-    if analysis.confidence is None:
-        analysis.confidence = 0.5
-
-    analysis.confidence = max(0.0, min(1.0, analysis.confidence))
-
     # =====================
     # Router hints
     # =====================
-
     if analysis.domain in ["inventory", "stock", "warehouse"]:
         analysis.target_agent = "inventory"
 
@@ -210,22 +180,11 @@ def analyze_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
     if analysis.requires_data:
         analysis.use_tools = True
 
-    print("analyze_query done")
-    print("target_agent:", analysis.target_agent)
-
     # =====================
     # IMPORTANT: return dict
     # =====================
-
     return {
-        "analysis": analysis,
-        "originalQuery": query,  # VERY IMPORTANT
-        "questions": analysis.questions,
-        "entities": analysis.entities,
-        "keywords": analysis.keywords,
-        "target_agent": analysis.target_agent,
-        "use_rag": analysis.use_rag,
-        "use_tools": analysis.use_tools,
+        "analysis": analysis
     }
 #=====================================================================
 
@@ -333,155 +292,52 @@ def rewrite_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
     """
     print("🟢 NODE → rewrite_query")
 
-    try:
+    analysis: QueryAnalysis = state.get("analysis")
 
-        messages = state.get("messages", [])
+    if not analysis:
+        return {}
 
-        if not messages:
-            logger.warning("rewrite_query: no messages in state")
-            return state
+    user_query = analysis.query
 
-        last_message = messages[-1]
-        user_query = last_message.content.strip()
+    if not should_rewrite(user_query):
+        logger.info("rewrite_query: skip rewrite (simple query)")
+        return {"analysis": analysis}
 
-        # -----------------------------
-        # SKIP rewrite for simple query
-        # -----------------------------
-        if not should_rewrite(user_query):
-
-            logger.info("rewrite_query: skip rewrite (simple query)")
-
-            return {
-                "questionIsClear": True,
-                "question": user_query,
-                "originalQuery": user_query,
-                "rewrittenQuestions": [user_query]
-            }
-
-        conversation_summary = state.get("conversation_summary", "")
-
-        context_section = ""
-
-        if conversation_summary.strip():
-            context_section += (
-                f"Conversation Context:\n{conversation_summary}\n\n"
-            )
-
-        context_section += f"User Query:\n{user_query}\n"
-
-        logger.info(f"[rewrite_query] query: {user_query}")
-
-        llm_structured = (
-            llm.with_config(temperature=0.1)
-            .with_structured_output(QueryAnalysis)
+    conversation_summary = state.get("conversation_summary", "")
+    context_section = ""
+    if conversation_summary.strip():
+        context_section += (
+            f"Conversation Context:\n{conversation_summary}\n\n"
         )
 
-        response = None
+    context_section += f"User Query:\n{user_query}\n"
 
-        # -----------------------------
-        # retry mechanism
-        # -----------------------------
-        for attempt in range(MAX_RETRY):
+    logger.info(f"[rewrite_query] query: {user_query}")
 
-            try:
+    llm_structured = (
+        llm.with_config(temperature=0.1)
+        .with_structured_output(QueryAnalysis)
+    )
 
-                response = llm_structured.invoke([
-                    SystemMessage(content=get_rewrite_query_prompt()),
-                    HumanMessage(content=context_section),
-                ])
+    response = llm_structured.invoke([
+        SystemMessage(content=get_rewrite_query_prompt()),
+        HumanMessage(content=context_section),
+    ])
 
-                break
+    queries = response.questions or [user_query]
 
-            except Exception as e:
+    queries = _expand_queries(queries, user_query)
+    queries = _safe_queries(queries, user_query)
 
-                logger.warning(
-                    f"rewrite_query LLM attempt {attempt+1} failed: {e}"
-                )
+    if response.confidence < 0.2:
+        queries = [user_query]
 
-        # -----------------------------
-        # fallback if LLM crash
-        # -----------------------------
-        if response is None:
+    analysis.questions = queries
 
-            logger.error("rewrite_query: LLM failed completely")
-
-            return {
-                "questionIsClear": True,
-                "question": user_query,
-                "originalQuery": user_query,
-                "rewrittenQuestions": [user_query],
-            }
-
-        # -----------------------------
-        # clarification branch
-        # -----------------------------
-        if response.needs_clarification:
-
-            clarification_message = (
-                "Your question is not clear enough. "
-                "Could you provide more details?"
-            )
-
-            logger.info("rewrite_query: clarification required")
-
-            return {
-                "questionIsClear": False,
-                "messages": [AIMessage(content=clarification_message)],
-            }
-
-        # -----------------------------
-        # multi-query generation
-        # -----------------------------
-        queries = response.questions or [user_query]
-
-        queries = _expand_queries(queries, user_query)
-        queries = _safe_queries(queries, user_query)
-
-        # -----------------------------
-        # confidence guard
-        # -----------------------------
-        if response.confidence < 0.2:
-
-            logger.warning(
-                "rewrite_query: low confidence, fallback to original query"
-            )
-
-            queries = [user_query]
-
-        logger.info(f"[rewrite_query] generated queries: {queries}")
-
-        # -----------------------------
-        # message cleanup
-        # -----------------------------
-        delete_msgs = [
-            RemoveMessage(id=m.id)
-            for m in messages[:-1]
-            if isinstance(m, (AIMessage, ToolMessage))
-        ]
-
-        # -----------------------------
-        # state update
-        # -----------------------------
-        return {
-            "questionIsClear": True,
-            "messages": delete_msgs,
-            "question": user_query,
-            "originalQuery": user_query,
-            "rewrittenQuestions": queries
-        }
-
-    except Exception as e:
-
-        logger.exception(f"rewrite_query fatal error: {e}")
-
-        query = state["messages"][-1].content
-
-        return {
-            "questionIsClear": True,
-            "question": query,
-            "originalQuery": query,
-            "rewrittenQuestions": [query],
-        }
+    return {
+        "analysis": analysis,
+        "questionIsClear": not response.needs_clarification
+    }
 
 def request_clarification(state: State, llm):
     print("🟢 NODE → request_clarification")
@@ -509,70 +365,41 @@ def request_clarification(state: State, llm):
 def orchestrator(state: State, llm):
     print("🟢 NODE → orchestrator")
 
+    analysis: QueryAnalysis = state.get("analysis")
+
+    question = analysis.query if analysis else ""
+
     context_summary = state.get("context_summary", "").strip()
     memory_context = state.get("memory_context", "").strip()
 
-    # ===== System Prompt =====
     base_prompt = get_orchestrator_prompt()
 
-    # Inject long-term memory vào system prompt
     if memory_context:
-        base_prompt = (
-            f"{base_prompt}\n\n"
-            f"### User Long-Term Memory:\n"
-            f"{memory_context}\n"
-        )
+        base_prompt += f"\n\nUser Memory:\n{memory_context}"
 
     sys_msg = SystemMessage(content=base_prompt)
 
-    # ===== Inject compressed context =====
     summary_injection = []
+
     if context_summary:
         summary_injection.append(
-            HumanMessage(content=f"[COMPRESSED CONTEXT]\n\n{context_summary}")
+            HumanMessage(content=f"[COMPRESSED CONTEXT]\n{context_summary}")
         )
 
-    # ===== Get question safely =====
-    question = (
-        state.get("question")
-        or state.get("originalQuery")
-        or state["messages"][-1].content
-    )
+    human_msg = HumanMessage(content=question)
 
-    # ===== First iteration =====
-    if state.get("iteration_count", 0) == 0:
-        human_msg = HumanMessage(content=question)
-
-        response = llm.invoke(
-            [sys_msg] + summary_injection + [human_msg]
-        )
-
-        tool_calls = getattr(response, "tool_calls", [])
-        print("🔥 TOOL CALLS:", tool_calls)
-
-        prev_iteration = state.get("iteration_count", 0)
-        prev_tool_calls = state.get("tool_call_count", 0)
-
-        return {
-            "messages": [human_msg, response],
-            "tool_call_count": prev_tool_calls + (len(tool_calls) if tool_calls else 0),
-            "iteration_count": prev_iteration + 1
-        }
-
-    # ===== Subsequent iterations =====
     response = llm.invoke(
-        [sys_msg] + summary_injection + state["messages"]
+        [sys_msg] + summary_injection + [human_msg]
     )
 
     tool_calls = getattr(response, "tool_calls", [])
-    print("🔥 TOOL CALLS:", tool_calls)
 
     prev_iteration = state.get("iteration_count", 0)
     prev_tool_calls = state.get("tool_call_count", 0)
 
     return {
-        "messages": [response],
-        "tool_call_count": prev_tool_calls + (len(tool_calls) if tool_calls else 0),
+        "messages": [human_msg, response],
+        "tool_call_count": prev_tool_calls + len(tool_calls),
         "iteration_count": prev_iteration + 1
     }
 # End multi-hop reasoning
@@ -583,8 +410,12 @@ def orchestrator(state: State, llm):
 def fallback_response(state: AgentState, llm):
     print("🟢 NODE → fallback_response")
 
+    analysis: QueryAnalysis = state.get("analysis")
+    question = analysis.query if analysis else ""
+
     seen = set()
     unique_contents = []
+
     for m in state["messages"]:
         if isinstance(m, ToolMessage) and m.content not in seen:
             unique_contents.append(m.content)
@@ -593,65 +424,90 @@ def fallback_response(state: AgentState, llm):
     context_summary = state.get("context_summary", "").strip()
 
     context_parts = []
+
     if context_summary:
-        context_parts.append(f"## Compressed Research Context (from prior iterations)\n\n{context_summary}")
-    if unique_contents:
         context_parts.append(
-            "## Retrieved Data (current iteration)\n\n" +
-            "\n\n".join(f"--- DATA SOURCE {i} ---\n{content}" for i, content in enumerate(unique_contents, 1))
+            f"## Compressed Research Context (from prior iterations)\n\n{context_summary}"
         )
 
-    context_text = "\n\n".join(context_parts) if context_parts else "No data was retrieved from the documents."
+    if unique_contents:
+        context_parts.append(
+            "## Retrieved Data (current iteration)\n\n"
+            + "\n\n".join(
+                f"--- DATA SOURCE {i} ---\n{content}"
+                for i, content in enumerate(unique_contents, 1)
+            )
+        )
+
+    context_text = "\n\n".join(context_parts) if context_parts else "No data retrieved."
 
     prompt_content = (
-        f"USER QUERY: {state.get('question')}\n\n"
+        f"USER QUERY: {question}\n\n"
         f"{context_text}\n\n"
         f"INSTRUCTION:\nProvide the best possible answer using only the data above."
     )
-    response = llm.invoke([SystemMessage(content=get_fallback_response_prompt()), HumanMessage(content=prompt_content)])
+
+    response = llm.invoke([
+        SystemMessage(content=get_fallback_response_prompt()),
+        HumanMessage(content=prompt_content)
+    ])
+
     return {"messages": [response]}
 
 # =========================================================
 # CONTEXT COMPRESSION
 # =========================================================
 def compress_context(state: AgentState, llm):
+    analysis: QueryAnalysis = state.get("analysis")
+    question = analysis.query if analysis else ""
+
     messages = state["messages"]
     existing_summary = state.get("context_summary", "").strip()
 
     if not messages:
         return {}
 
-    conversation_text = f"USER QUESTION:\n{state.get('question')}\n\nConversation to compress:\n\n"
+    conversation_text = f"USER QUESTION:\n{question}\n\nConversation to compress:\n\n"
+
     if existing_summary:
         conversation_text += f"[PRIOR COMPRESSED CONTEXT]\n{existing_summary}\n\n"
 
     for msg in messages[1:]:
+
         if isinstance(msg, AIMessage):
+
             tool_calls_info = ""
+
             if getattr(msg, "tool_calls", None):
-                calls = ", ".join(f"{tc['name']}({tc['args']})" for tc in msg.tool_calls)
+                calls = ", ".join(
+                    f"{tc['name']}({tc['args']})"
+                    for tc in msg.tool_calls
+                )
+
                 tool_calls_info = f" | Tool calls: {calls}"
-            conversation_text += f"[ASSISTANT{tool_calls_info}]\n{msg.content or '(tool call only)'}\n\n"
+
+            conversation_text += (
+                f"[ASSISTANT{tool_calls_info}]\n"
+                f"{msg.content or '(tool call only)'}\n\n"
+            )
+
         elif isinstance(msg, ToolMessage):
+
             tool_name = getattr(msg, "name", "tool")
-            conversation_text += f"[TOOL RESULT — {tool_name}]\n{msg.content}\n\n"
+
+            conversation_text += (
+                f"[TOOL RESULT — {tool_name}]\n"
+                f"{msg.content}\n\n"
+            )
 
     summary_response = safe_llm_invoke(llm, [...])
+
     new_summary = summary_response.content
 
-    retrieved_ids: Set[str] = state.get("retrieval_keys", set())
-    if retrieved_ids:
-        parent_ids = sorted(r for r in retrieved_ids if r.startswith("parent::"))
-        search_queries = sorted(r.replace("search::", "") for r in retrieved_ids if r.startswith("search::"))
-
-        block = "\n\n---\n**Already executed (do NOT repeat):**\n"
-        if parent_ids:
-            block += "Parent chunks retrieved:\n" + "\n".join(f"- {p.replace('parent::', '')}" for p in parent_ids) + "\n"
-        if search_queries:
-            block += "Search queries already run:\n" + "\n".join(f"- {q}" for q in search_queries) + "\n"
-        new_summary += block
-
-    return {"context_summary": new_summary, "messages": [RemoveMessage(id=m.id) for m in messages[1:]]}
+    return {
+        "context_summary": new_summary,
+        "messages": [RemoveMessage(id=m.id) for m in messages[1:]]
+    }
 
 # =========================================================
 # TOKEN CONTROL
@@ -694,12 +550,37 @@ def should_compress_context(state: AgentState) -> Command[Literal["compress_cont
 def collect_answer(state: AgentState):
     print("🟢 NODE → collect_answer")
 
+    analysis: QueryAnalysis = state.get("analysis")
+    question_index = state.get("question_index", 0)
+
+    # fallback query
+    question = ""
+
+    if analysis:
+        if analysis.questions and question_index < len(analysis.questions):
+            question = analysis.questions[question_index]
+        else:
+            question = analysis.query
+
     last_message = state["messages"][-1]
-    is_valid = isinstance(last_message, AIMessage) and last_message.content and not last_message.tool_calls
+
+    is_valid = (
+        isinstance(last_message, AIMessage)
+        and last_message.content
+        and not last_message.tool_calls
+    )
+
     answer = last_message.content if is_valid else "Unable to generate an answer."
+
     return {
         "final_answer": answer,
-        "agent_answers": [{"index": state["question_index"], "question": state["question"], "answer": answer}]
+        "agent_answers": [
+            {
+                "index": question_index,
+                "question": question,
+                "answer": answer
+            }
+        ]
     }
 # --- End of Agent Nodes---
 
@@ -711,133 +592,26 @@ def planner(state: AgentState, llm):
 
     print("🟢 NODE → planner")
 
-    # =========================
-    # Get question
-    # =========================
-    question = (
-        state.get("question")
-        or state.get("originalQuery")
-        or state["messages"][-1].content
-    )
+    analysis: QueryAnalysis = state.get("analysis")
 
-    # =========================
-    # Query analysis
-    # =========================
-    analysis = state.get("analysis")
+    question = analysis.query if analysis else ""
 
-    domain = "general"
-    intent = "general"
-    use_rag = False
-    use_tools = False
-    entities = []
+    domain = getattr(analysis, "domain", "general")
+    intent = getattr(analysis, "intent", "general")
+    entities = getattr(analysis, "entities", [])
 
-    if analysis:
-        domain = getattr(analysis, "domain", "general")
-        intent = getattr(analysis, "intent", "general")
-        use_rag = getattr(analysis, "use_rag", False)
-        use_tools = getattr(analysis, "use_tools", False)
-        entities = getattr(analysis, "entities", [])
-
-    # =========================
-    # Context summary
-    # =========================
     context_summary = state.get("conversation_summary", "")
 
-    # =========================
-    # Tool cost guard
-    # =========================
-    tool_call_count = state.get("tool_call_count", 0)
-
-    if tool_call_count > 10:
-        return {
-            "plan": "Tool usage limit reached. Answer using available context only.",
-            "tool_strategy": "NO_TOOLS"
-        }
-
-    # =========================
-    # Planner prompt
-    # =========================
     prompt = f"""
-You are the planning engine for an AI ERP system.
-
-Your job is to decide:
-
-1. Which tool category should be used
-2. Whether the answer can be generated without tools
-3. The safest strategy to retrieve information
-
-------------------------------------
-
-ERP Domain:
-{domain}
-
-Intent:
-{intent}
-
-Entities:
-{entities}
+ERP Domain: {domain}
+Intent: {intent}
+Entities: {entities}
 
 User Question:
 {question}
 
 Conversation Context:
 {context_summary}
-
-------------------------------------
-
-Available tool categories:
-
-ERP_DB
-- ERP internal database
-- invoices
-- accounting entries
-- inventory records
-- stock transactions
-
-RAG
-- company documents
-- regulations
-- tax law
-- policies
-- manuals
-
-API
-- external services
-- payment gateway
-- e-invoice provider
-- exchange rate API
-
-ANALYTICS
-- reports
-- financial analysis
-- forecasting
-- dashboards
-
-------------------------------------
-
-Planning rules:
-
-1. If the question is about ERP data → use ERP_DB
-2. If the question is about regulations or documents → use RAG
-3. If the question requires external service → use API
-4. If the question requires calculations or reports → use ANALYTICS
-5. If the answer can be generated from context → use NO_TOOLS
-
-------------------------------------
-
-Anti-hallucination rules:
-
-- NEVER invent ERP data
-- NEVER fabricate financial numbers
-- If no reliable source exists → request tool usage
-
-------------------------------------
-
-Return a short plan with:
-
-- TOOL_CATEGORY
-- TOOL_STRATEGY
-- REASONING
 """
 
     response = llm.invoke([
@@ -847,9 +621,6 @@ Return a short plan with:
 
     plan_text = response.content
 
-    # =========================
-    # Basic plan parsing
-    # =========================
     tool_strategy = "UNKNOWN"
 
     if "ERP_DB" in plan_text:
@@ -880,14 +651,21 @@ def aggregate_answers(state: State, llm):
     if not state.get("agent_answers"):
         return {"messages": [AIMessage(content="No answers were generated.")]}
 
-    sorted_answers = sorted(state["agent_answers"], key=lambda x: x["index"])
+    analysis: QueryAnalysis = state.get("analysis")
+    question = analysis.query if analysis else ""
+
+    sorted_answers = sorted(
+        state["agent_answers"],
+        key=lambda x: x["index"]
+    )
+
     formatted_answers = "\n".join(
         f"Answer {i}:\n{ans['answer']}"
         for i, ans in enumerate(sorted_answers, start=1)
     )
 
     user_message = HumanMessage(content=(
-        f"Original user question: {state['originalQuery']}\n"
+        f"Original user question: {question}\n"
         f"Retrieved answers:\n{formatted_answers}"
     ))
 
@@ -895,6 +673,7 @@ def aggregate_answers(state: State, llm):
         SystemMessage(content=get_aggregation_prompt()),
         user_message
     ])
+
     return {"messages": [response]}
 
 

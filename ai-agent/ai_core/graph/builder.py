@@ -122,7 +122,6 @@ def create_agent_graph(llm, tools_list):
     graph_builder.add_edge("load_memory", "analyze_query")
     graph_builder.add_edge("analyze_query", "summarize_history")
     graph_builder.add_edge("summarize_history", "rewrite_query")
-    graph_builder.add_edge("rewrite_query", "agent_router")
     
     graph_builder.add_conditional_edges(
         "rewrite_query",
