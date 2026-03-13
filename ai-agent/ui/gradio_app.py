@@ -65,9 +65,7 @@ def create_gradio_ui():
     def format_file_list():
 
         try:
-
             files = doc_manager.get_markdown_files()
-
             if not files:
                 return "📭 No documents available in the knowledge base"
 

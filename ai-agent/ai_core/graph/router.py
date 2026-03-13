@@ -43,7 +43,7 @@ def agent_router(state: State, llm):
         }
 
     # 2️. fallback LLM classification
-    query = state.get("originalQuery")
+    query = analysis.query if analysis and analysis.query else None
 
     if not query and state.get("messages"):
         query = state["messages"][-1].content
@@ -119,12 +119,12 @@ def rag_router(state: State) -> Literal["rag", "no_rag"]:
 ############################################################
 # ROUTER AFTER QUERY REWRITE
 ############################################################
-def route_after_rewrite(state: State) -> Literal["request_clarification", "agent_router"]:
+def route_after_rewrite(state: State) -> Literal["request_clarification", "agent"]:
 
     if not state.get("questionIsClear", True):
         return "request_clarification"
 
-    return "agent_router"
+    return "agent"
 
 ############################################################
 # LOOP GUARD (anti infinite loop)

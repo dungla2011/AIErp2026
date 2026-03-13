@@ -149,6 +149,37 @@ def analyze_query(state: Dict[str, Any], llm) -> Dict[str, Any]:
             HumanMessage(content=user_prompt),
         ])
 
+        # =====================
+        # ERP DOMAIN CORRECTION
+        # =====================
+        query_lower = query.lower()
+
+        # detect Vietnamese accounting account codes
+        import re
+
+        account_match = re.search(r"\b(1\d{2}|2\d{2}|3\d{2}|4\d{2}|5\d{2}|6\d{2}|7\d{2}|8\d{2}|9\d{2})\b", query_lower)
+
+        if "tài khoản" in query_lower and account_match:
+            analysis.domain = "accounting"
+            analysis.subdomain = "chart_of_accounts"
+            analysis.intent = "account_definition"
+            analysis.target_agent = "accounting"
+        
+        # inventory rule
+        inventory_keywords = [
+            "tồn kho",
+            "kho",
+            "warehouse",
+            "stock",
+            "nhập kho",
+            "xuất kho"
+        ]
+
+        if any(k in query_lower for k in inventory_keywords):
+            analysis.domain = "inventory"
+            analysis.subdomain = "warehouse"
+            analysis.target_agent = "inventory"
+
     except Exception as e:
         print("analyze_query error:", e)
         analysis = QueryAnalysis(

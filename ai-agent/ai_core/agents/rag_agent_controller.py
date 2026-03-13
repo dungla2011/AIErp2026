@@ -29,28 +29,17 @@ class RAGAgentController:
         parent_store
     ):
         self.llm = llm
-
         self.cache = SemanticCache()
-
         self.query_rewriter = QueryRewriter(llm)
-
         self.hybrid_search = HybridSearchEngine(vector_db)
-
         self.multi_query = MultiQueryRetriever(llm)
-
         self.reranker = RerankerService()
-
         self.compressor = ContextCompressor()
-
         self.freshness_ranker = FreshnessRanker()
-
         self.graph_retriever = GraphRetriever()
         self.graph_retriever.build_from_parent_store(parent_store)
-
         self.verifier = AnswerVerifier(llm)
-
         self.hallucination_detector = HallucinationDetector()
-
         self.citation_engine = CitationEngine(parent_store)
 
     def answer(self, query: str) -> Dict:

@@ -1,6 +1,6 @@
 def audit_agent(state, llm):
 
-    question = state["originalQuery"]
+    question = state.get("originalQuery") or state["messages"][-1].content
 
     response = llm.invoke(
         f"""
