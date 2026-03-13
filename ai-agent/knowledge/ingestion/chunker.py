@@ -4,6 +4,7 @@ import glob
 import os
 import uuid
 import config
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class Document:
@@ -36,6 +37,14 @@ class DocumentChunker:
         self.parent_chunk_overlap = parent_chunk_overlap
         self.child_chunk_size = child_chunk_size
         self.child_chunk_overlap = child_chunk_overlap
+        
+        self.__min_parent_size = getattr(config, "MIN_PARENT_SIZE", 2000)
+        self.__max_parent_size = getattr(config, "MAX_PARENT_SIZE", 4000)
+        
+        self.__child_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=child_chunk_size,
+            chunk_overlap=child_chunk_overlap
+        )
 
     def _split_text(self, text: str, chunk_size: int, overlap: int) -> List[str]:
 
@@ -128,3 +137,87 @@ class DocumentChunker:
         parent_docs, child_docs = self.split_documents([doc])
 
         return parent_docs, child_docs
+
+    def __merge_small_parents(self, chunks):
+        if not chunks:
+            return []
+        
+        merged, current = [], None
+        
+        for chunk in chunks:
+            if current is None:
+                current = chunk
+            else:
+                current.page_content += "\n\n" + chunk.page_content
+                for k, v in chunk.metadata.items():
+                    if k in current.metadata:
+                        current.metadata[k] = f"{current.metadata[k]} -> {v}"
+                    else:
+                        current.metadata[k] = v
+
+            if len(current.page_content) >= self.__min_parent_size:
+                merged.append(current)
+                current = None
+        
+        if current:
+            if merged:
+                merged[-1].page_content += "\n\n" + current.page_content
+                for k, v in current.metadata.items():
+                    if k in merged[-1].metadata:
+                        merged[-1].metadata[k] = f"{merged[-1].metadata[k]} -> {v}"
+                    else:
+                        merged[-1].metadata[k] = v
+            else:
+                merged.append(current)
+        
+        return merged
+
+    def __split_large_parents(self, chunks):
+        split_chunks = []
+        
+        for chunk in chunks:
+            if len(chunk.page_content) <= self.__max_parent_size:
+                split_chunks.append(chunk)
+            else:
+                splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=self.__max_parent_size,
+                    chunk_overlap=config.CHILD_CHUNK_OVERLAP
+                )
+                sub_chunks = splitter.split_documents([chunk])
+                split_chunks.extend(sub_chunks)
+        
+        return split_chunks
+
+    def __clean_small_chunks(self, chunks):
+        cleaned = []
+        
+        for i, chunk in enumerate(chunks):
+            if len(chunk.page_content) < self.__min_parent_size:
+                if cleaned:
+                    cleaned[-1].page_content += "\n\n" + chunk.page_content
+                    for k, v in chunk.metadata.items():
+                        if k in cleaned[-1].metadata:
+                            cleaned[-1].metadata[k] = f"{cleaned[-1].metadata[k]} -> {v}"
+                        else:
+                            cleaned[-1].metadata[k] = v
+                elif i < len(chunks) - 1:
+                    chunks[i + 1].page_content = chunk.page_content + "\n\n" + chunks[i + 1].page_content
+                    for k, v in chunk.metadata.items():
+                        if k in chunks[i + 1].metadata:
+                            chunks[i + 1].metadata[k] = f"{v} -> {chunks[i + 1].metadata[k]}"
+                        else:
+                            chunks[i + 1].metadata[k] = v
+                else:
+                    cleaned.append(chunk)
+            else:
+                cleaned.append(chunk)
+        
+        return cleaned
+
+    def __create_child_chunks(self, all_parent_pairs, all_child_chunks, parent_chunks, doc_path):
+        for i, p_chunk in enumerate(parent_chunks):
+            parent_id = f"{doc_path.stem}_parent_{i}"
+            p_chunk.metadata.update({"source": str(doc_path.stem)+".pdf", "parent_id": parent_id})
+            
+            all_parent_pairs.append((parent_id, p_chunk))
+            all_child_chunks.extend(self.__child_splitter.split_documents([p_chunk]))
