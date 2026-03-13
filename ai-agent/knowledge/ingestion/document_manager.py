@@ -93,10 +93,46 @@ class DocumentManager:
         return sorted([p.name.replace(".md", ".pdf") for p in self.markdown_dir.glob("*.md")])
     
     def clear_all(self):
-        if self.markdown_dir.exists():
-            shutil.rmtree(self.markdown_dir)
-            self.markdown_dir.mkdir(parents=True, exist_ok=True)
+        """Clear all documents and databases (markdown, parent_store, qdrant)"""
+        errors = []
         
-        self.rag_system.parent_store.clear_store()
-        self.rag_system.vector_db.delete_collection(self.rag_system.collection_name)
-        self.rag_system.vector_db.create_collection(self.rag_system.collection_name)
+        # Clear markdown files
+        try:
+            if self.markdown_dir.exists():
+                shutil.rmtree(self.markdown_dir)
+            self.markdown_dir.mkdir(parents=True, exist_ok=True)
+            print(f"✓ Cleared markdown directory: {self.markdown_dir}")
+        except Exception as e:
+            error_msg = f"Failed to clear markdown directory: {e}"
+            print(f"❌ {error_msg}")
+            errors.append(error_msg)
+        
+        # Clear parent store (document chunks database)
+        try:
+            self.rag_system.parent_store.clear_store()
+            print(f"✓ Cleared parent_store database")
+        except Exception as e:
+            error_msg = f"Failed to clear parent_store: {e}"
+            print(f"❌ {error_msg}")
+            errors.append(error_msg)
+        
+        # Clear vector database (qdrant)
+        try:
+            self.rag_system.vector_db.delete_collection(self.rag_system.collection_name)
+            print(f"✓ Deleted Qdrant collection: {self.rag_system.collection_name}")
+        except Exception as e:
+            error_msg = f"Failed to delete Qdrant collection: {e}"
+            print(f"❌ {error_msg}")
+            errors.append(error_msg)
+        
+        # Recreate vector collection
+        try:
+            self.rag_system.vector_db.create_collection(self.rag_system.collection_name)
+            print(f"✓ Created new Qdrant collection: {self.rag_system.collection_name}")
+        except Exception as e:
+            error_msg = f"Failed to create new Qdrant collection: {e}"
+            print(f"❌ {error_msg}")
+            errors.append(error_msg)
+        
+        if errors:
+            raise Exception(f"Clear operation completed with errors: {'; '.join(errors)}")

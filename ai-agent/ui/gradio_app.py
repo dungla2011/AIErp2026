@@ -125,14 +125,18 @@ def create_gradio_ui():
 
             doc_manager.clear_all()
 
-            gr.Info("🗑️ Removed all documents")
+            logger.info("Knowledge base cleared successfully")
+            gr.Info("🗑️ Removed all documents and databases")
 
             return format_file_list()
 
         except Exception as e:
 
+            error_msg = str(e)
             logger.error("Failed clearing documents")
             logger.error(traceback.format_exc())
+
+            gr.Warning(f"❌ Clear operation failed: {error_msg}")
 
             return format_file_list()
 

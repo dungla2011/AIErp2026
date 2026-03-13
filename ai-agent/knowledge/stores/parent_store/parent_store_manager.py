@@ -47,6 +47,13 @@ class ParentStoreManager:
         return [self.load_content(pid) for pid in sorted(unique_ids, key=self._get_sort_key)]
     
     def clear_store(self) -> None:
-        if self.__store_path.exists():
-            shutil.rmtree(self.__store_path)
-        self.__store_path.mkdir(parents=True, exist_ok=True)
+        """Clear all files in the parent store"""
+        try:
+            if self.__store_path.exists():
+                print(f"Removing parent_store directory: {self.__store_path}")
+                shutil.rmtree(self.__store_path)
+            self.__store_path.mkdir(parents=True, exist_ok=True)
+            print(f"✓ Parent store cleared and recreated: {self.__store_path}")
+        except Exception as e:
+            print(f"❌ Error clearing parent store: {e}")
+            raise
