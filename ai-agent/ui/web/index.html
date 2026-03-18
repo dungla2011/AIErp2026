@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot MVP - Chat</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .api-alert {
+      background: #dc3545;
+      color: white;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+      letter-spacing: .3px;
+    }
+  </style>
+</head>
+<body class="chat-shell">
+
+  <nav id="app-nav" class="navbar app-navbar navbar-expand-lg" data-active="chat"></nav>
+
+  <!-- API Health Alert -->
+  <div id="apiAlert" class="api-alert" style="display:none;">
+    &#x26A0;&#xFE0F; API chưa kết nối &mdash; máy chủ tại <span id="apiAlertUrl"></span> không phản hồi. Chat bị tạm khóa.
+  </div>
+
+  <!-- Chat Messages -->
+  <div class="chat-messages" id="messages">
+    <div class="message bot">
+      <div class="message-content">
+        <span class="message-text">Xin chào! &#x1F44B; Mình là bot bán hàng thông minh. Bạn có thể hỏi mình về:<br>
+        - &#x1F4E6; Danh sách đơn hàng<br>
+        - &#x1F4CA; Doanh thu<br>
+        - &#x2705; Trạng thái đơn hàng</span>
+        <span class="message-time" id="welcomeTime"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input Area -->
+  <div class="input-area">
+    <select id="roleSelect" title="Role hiện tại (chọn user ở menu trên)" disabled
+      style="border:none;background:#e8eaf0;border-radius:6px;padding:4px 8px;font-size:.8rem;color:#555;flex-shrink:0;opacity:1;cursor:default;">
+      <option value="customer">👤 Customer</option>
+      <option value="staff">🛡️ Staff</option>
+      <option value="admin">⚙️ Admin</option>
+    </select>
+    <input type="text" class="chat-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeyup="handleKeyUp(event)">
+    <button class="btn btn-grad px-4" onclick="sendMessage()" id="sendBtn">&#x1F4E4; Gửi</button>
+    <button class="btn btn-new px-3" onclick="startNewConversation()" title="Ctrl+N">&#x1F504; Mới</button>
+  </div>
+  <div class="conv-info">Conversation ID: <span id="convId">-</span></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    const API_PORT = "{{API_PORT}}".includes('{{') ? "8100" : "{{API_PORT}}";
+    const API_URL  = "{{API_URL}}".includes('{{') ? `http://${window.location.hostname}:${API_PORT}` : "{{API_URL}}";
+    initNav(API_URL);
+
+    let conversationId = null;
+
+    // Returns the DB user id (integer) from nav dropdown, or null if none selected.
+    function getEffectiveUserId() {
+      const navUser = window.getCurrentUser && window.getCurrentUser();
+      return navUser ? navUser.id : null;
+    }
+
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn      = document.getElementById("sendBtn");
+    const messagesDiv  = document.getElementById("messages");
+    const convIdSpan   = document.getElementById("convId");
+
+    function handleKeyUp(e) {
+      if (e.key === "Enter" && !e.shiftKey) sendMessage();
+    }
+
+    function fmtTime(timestamp) {
+      const ts = timestamp ? new Date(timestamp) : new Date();
+      return ts.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(text, sender, timestamp) {
+      const wrap = document.createElement("div");
+      wrap.className = `message ${sender}`;
+      const bubble = document.createElement("div");
+      bubble.className = "message-content";
+      const textSpan = document.createElement("span");
+      textSpan.className = "message-text";
+      textSpan.textContent = text;
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "message-time";
+      timeSpan.textContent = fmtTime(timestamp);
+      bubble.appendChild(textSpan);
+      bubble.appendChild(timeSpan);
+      wrap.appendChild(bubble);
+      messagesDiv.appendChild(wrap);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function addLoading(id) {
+      const wrap = document.createElement("div");
+      wrap.className = "message bot";
+      wrap.id = id;
+      const bubble = document.createElement("div");
+      bubble.className = "message-content";
+      bubble.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+      wrap.appendChild(bubble);
+      messagesDiv.appendChild(wrap);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function removeLoading(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    async function sendMessage() {
+      const message = messageInput.value.trim();
+      if (!message) return;
+      messageInput.disabled = true;
+      sendBtn.disabled = true;
+      addMessage(message, "user");
+      messageInput.value = "";
+      const loadingId = "loading-" + Date.now();
+      addLoading(loadingId);
+      try {
+        const response = await fetch(`${API_URL}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, conversation_id: conversationId, user_id: getEffectiveUserId() }),
+        });
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
+        const data = await response.json();
+        conversationId = data.conversation_id;
+        convIdSpan.textContent = conversationId.substring(0, 8) + "...";
+        localStorage.setItem('lastConversationId', conversationId);
+        window.history.replaceState({}, '', `?conv_id=${conversationId}`);
+        removeLoading(loadingId);
+        addMessage(data.bot_response, "bot");
+        updateUsageStats();
+      } catch (error) {
+        removeLoading(loadingId);
+        addMessage("&#x274C; Lỗi: " + error.message, "bot");
+        console.error("Error:", error);
+      } finally {
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.focus();
+      }
+    }
+
+    async function loadConversationHistory() {
+      const uid = getEffectiveUserId();
+
+      if (uid) {
+        // Load all messages for this user (user_id-based, most reliable)
+        try {
+          const res = await fetch(`${API_URL}/messages/user/${uid}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.conversation_id) {
+              conversationId = data.conversation_id;
+              convIdSpan.textContent = conversationId.substring(0, 8) + "...";
+              localStorage.setItem('lastConversationId', conversationId);
+              window.history.replaceState({}, '', `?conv_id=${conversationId}`);
+            }
+            if (data.history && data.history.length > 0) {
+              data.history.forEach(msg => addMessage(msg.content, msg.role === 'bot' ? 'bot' : 'user', msg.created_at));
+            }
+          }
+        } catch(e) {}
+        return;
+      }
+
+      // Fallback: no user selected — try conv_id from URL/localStorage
+      const urlParams = new URLSearchParams(window.location.search);
+      let savedConvId = urlParams.get('conv_id') || localStorage.getItem('lastConversationId');
+      if (!savedConvId) {
+        try {
+          const res = await fetch(`${API_URL}/conversations/latest`);
+          if (res.ok) { const d = await res.json(); savedConvId = d.conversation_id; }
+        } catch(e) {}
+      }
+      if (savedConvId) {
+        try {
+          const res = await fetch(`${API_URL}/conversations/${savedConvId}`);
+          if (res.ok) {
+            const data = await res.json();
+            conversationId = data.conversation_id;
+            convIdSpan.textContent = conversationId.substring(0, 8) + "...";
+            if (data.history && data.history.length > 0) {
+              data.history.forEach(msg => addMessage(msg.content, msg.role, msg.created_at));
+            }
+          }
+        } catch(e) {}
+      }
+    }
+
+    function startNewConversation() {
+      if (confirm("Bắt đầu cuộc hội thoại mới?")) {
+        conversationId = null;
+        messagesDiv.innerHTML = "";
+        localStorage.removeItem('lastConversationId');
+        window.history.replaceState({}, '', window.location.pathname);
+        messageInput.focus();
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey && e.key === 'n') { e.preventDefault(); startNewConversation(); }
+    });
+
+    // ── API Health Polling ────────────────────────────────────────
+    let _apiOnline = true;
+
+    function setApiStatus(online) {
+      const alertEl = document.getElementById('apiAlert');
+      document.getElementById('apiAlertUrl').textContent = API_URL;
+      alertEl.style.display = online ? 'none' : 'block';
+      messageInput.disabled = !online;
+      sendBtn.disabled = !online;
+      if (online) messageInput.focus();
+    }
+
+    async function checkApiHealth() {
+      try {
+        const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(2500) });
+        const ok = res.ok;
+        if (ok !== _apiOnline) { _apiOnline = ok; setApiStatus(ok); }
+      } catch(e) {
+        if (_apiOnline) { _apiOnline = false; setApiStatus(false); }
+      }
+    }
+
+    setInterval(checkApiHealth, 5000);
+
+    window.addEventListener("load", () => {
+      document.getElementById('welcomeTime').textContent = fmtTime();
+      // Set initial role display from localStorage
+      const savedRole = localStorage.getItem('chatUserRole');
+      if (savedRole) document.getElementById('roleSelect').value = savedRole;
+      // (no onchange — roleSelect is readonly, driven by nav user dropdown)
+      loadConversationHistory();
+      updateUsageStats();
+      checkApiHealth();
+      messageInput.focus();
+
+      // Sync roleSelect + reload history when nav user changes
+      window.addEventListener('navUserChanged', (e) => {
+        const user = e.detail;
+        const roleSelect = document.getElementById('roleSelect');
+        if (user) {
+          roleSelect.value = user.role_id;
+          localStorage.setItem('chatUserRole', user.role_id);
+        } else {
+          roleSelect.value = 'customer';
+          localStorage.setItem('chatUserRole', 'customer');
+        }
+        // Reload chat history for the newly selected user
+        conversationId = null;
+        messagesDiv.innerHTML = '';
+        loadConversationHistory();
+      });
+    });
+  </script>
+</body>
+</html>

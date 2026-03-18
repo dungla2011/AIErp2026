@@ -1,2 +1,6 @@
 # xoa het git ignore
 # Thay 42 file thôi là ít, ok
+.env
+__pycache__
+.venv
+venv

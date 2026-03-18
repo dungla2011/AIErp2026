@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings – Bot MVP</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { background: #f8f9fa; }
+    .settings-card { border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .badge-role { font-size: .78rem; }
+    .table th { white-space: nowrap; }
+    .perm-cell { text-align: center; }
+    .perm-cell input[type=checkbox] { width: 1.1rem; height: 1.1rem; cursor: pointer; }
+    .inactive-row td { opacity: .55; }
+  </style>
+</head>
+<body>
+  <nav id="app-nav" class="navbar app-navbar navbar-expand-lg" data-active="settings"></nav>
+
+  <div class="container-fluid py-4">
+    <h4 class="mb-3 fw-bold">⚙️ Settings – User &amp; Role Management</h4>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="settingsTabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabUsers"  type="button">👤 Users</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="tab" data-bs-target="#tabRoles"  type="button">🏷️ Roles</button></li>
+      <li class="nav-item"><button class="nav-link"        data-bs-toggle="tab" data-bs-target="#tabPerms"  type="button">🔒 Permissions</button></li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- ─── TAB: USERS ──────────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="tabUsers">
+        <div class="card settings-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="mb-0 fw-semibold">Danh sách Users</h6>
+              <button class="btn btn-sm btn-primary" onclick="openUserModal()">+ Thêm User</button>
+            </div>
+            <div id="usersTableWrap">
+              <p class="text-muted">Đang tải...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB: ROLES ──────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabRoles">
+        <div class="card settings-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="mb-0 fw-semibold">Danh sách Roles</h6>
+              <button class="btn btn-sm btn-primary" onclick="openRoleModal()">+ Thêm Role</button>
+            </div>
+            <div id="rolesTableWrap">
+              <p class="text-muted">Đang tải...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── TAB: PERMISSIONS ────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabPerms">
+        <div class="card settings-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="mb-0 fw-semibold">Ma trận phân quyền tài liệu</h6>
+              <button class="btn btn-sm btn-success" onclick="savePerms()">💾 Lưu thay đổi</button>
+            </div>
+            <div id="permsTableWrap">
+              <p class="text-muted">Đang tải...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </div><!-- /container -->
+
+  <!-- ─── MODAL: Add/Edit User ──────────────────────────────────────── -->
+  <div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="userModalTitle">Thêm User</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editUserId" />
+          <div class="mb-3">
+            <label class="form-label">Username <span class="text-danger">*</span></label>
+            <input type="text" id="fUsername" class="form-control" placeholder="vd: staff01" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Họ tên hiển thị <span class="text-danger">*</span></label>
+            <input type="text" id="fDisplayName" class="form-control" placeholder="vd: Nguyễn Văn A" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Role <span class="text-danger">*</span></label>
+            <select id="fRoleId" class="form-select"></select>
+          </div>
+          <div class="mb-2 form-check" id="fActiveWrap" style="display:none">
+            <input type="checkbox" class="form-check-input" id="fIsActive" />
+            <label class="form-check-label" for="fIsActive">Đang hoạt động</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+          <button class="btn btn-primary" onclick="saveUser()">Lưu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── MODAL: Add/Edit Role ──────────────────────────────────────── -->
+  <div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="roleModalTitle">Thêm Role</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editRoleId" />
+          <div class="mb-3" id="fRoleIdWrap">
+            <label class="form-label">Role ID <span class="text-danger">*</span> <small class="text-muted">(chữ thường, không dấu, không khoảng trắng)</small></label>
+            <input type="text" id="fRoleIdInput" class="form-control" placeholder="vd: supervisor" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Tên hiển thị <span class="text-danger">*</span></label>
+            <input type="text" id="fRoleName" class="form-control" placeholder="vd: Giám sát" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Mô tả</label>
+            <input type="text" id="fRoleDesc" class="form-control" placeholder="Mô tả ngắn về role" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+          <button class="btn btn-primary" onclick="saveRole()">Lưu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="mainToast" class="toast align-items-center text-bg-success border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMsg">OK</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    const API_URL = '{{API_URL}}';
+    initNav(API_URL);
+
+    // ── Helpers ─────────────────────────────────────────────────────
+    let _users = [], _roles = [], _categories = [];
+
+    const fmtDate = iso => iso ? new Date(iso).toLocaleString('vi-VN') : '—';
+
+    function showToast(msg, ok = true) {
+      const el = document.getElementById('mainToast');
+      const body = document.getElementById('toastMsg');
+      el.className = `toast align-items-center border-0 text-bg-${ok ? 'success' : 'danger'}`;
+      body.textContent = msg;
+      bootstrap.Toast.getOrCreateInstance(el).show();
+    }
+
+    async function apiFetch(url, opts = {}) {
+      const res = await fetch(API_URL + url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...opts,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      return res.json();
+    }
+
+    // ── Load all data ───────────────────────────────────────────────
+    async function loadAll() {
+      [_users, _roles, _categories] = await Promise.all([
+        apiFetch('/users'),
+        apiFetch('/roles'),
+        apiFetch('/categories'),
+      ]);
+      renderUsers();
+      renderRoles();
+    }
+
+    // ── USERS tab ───────────────────────────────────────────────────
+    function roleBadge(role) {
+      const map = { admin: 'danger', staff: 'warning', customer: 'primary' };
+      const cls = map[role] || 'secondary';
+      return `<span class="badge bg-${cls} badge-role">${role}</span>`;
+    }
+
+    function renderUsers() {
+      if (!_users.length) {
+        document.getElementById('usersTableWrap').innerHTML = '<p class="text-muted">Không có user nào.</p>';
+        return;
+      }
+      let html = `<table class="table table-hover table-sm align-middle">
+        <thead class="table-light"><tr>
+          <th>#</th><th>Username</th><th>Họ tên</th><th>Role</th><th>Trạng thái</th><th>Tạo lúc</th><th>Hành động</th>
+        </tr></thead><tbody>`;
+      _users.forEach((u, i) => {
+        const cls = u.is_active ? '' : 'inactive-row';
+        html += `<tr class="${cls}">
+          <td class="text-muted small">${i + 1}</td>
+          <td><code>${u.username}</code></td>
+          <td>${u.display_name}</td>
+          <td>${roleBadge(u.role_id)}</td>
+          <td>${u.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>'}</td>
+          <td class="small text-muted">${fmtDate(u.created_at)}</td>
+          <td>
+            <button class="btn btn-xs btn-outline-primary btn-sm me-1" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️</button>
+            <button class="btn btn-xs btn-outline-danger btn-sm" onclick="deleteUser('${u.id}','${u.display_name}')">🗑</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      document.getElementById('usersTableWrap').innerHTML = html;
+    }
+
+    let _userModalInstance = null;
+
+    function openUserModal(user = null) {
+      document.getElementById('editUserId').value = user ? user.id : '';
+      document.getElementById('userModalTitle').textContent = user ? 'Chỉnh sửa User' : 'Thêm User';
+      document.getElementById('fUsername').value = user ? user.username : '';
+      document.getElementById('fUsername').disabled = !!user;
+      document.getElementById('fDisplayName').value = user ? user.display_name : '';
+      document.getElementById('fActiveWrap').style.display = user ? 'block' : 'none';
+      document.getElementById('fIsActive').checked = user ? !!user.is_active : true;
+
+      // Fill role select
+      const sel = document.getElementById('fRoleId');
+      sel.innerHTML = _roles.map(r => `<option value="${r.id}">${r.name} (${r.id})</option>`).join('');
+      if (user) sel.value = user.role_id;
+
+      _userModalInstance = bootstrap.Modal.getOrCreateInstance(document.getElementById('userModal'));
+      _userModalInstance.show();
+    }
+
+    async function saveUser() {
+      const id = document.getElementById('editUserId').value;
+      const username = document.getElementById('fUsername').value.trim();
+      const display_name = document.getElementById('fDisplayName').value.trim();
+      const role_id = document.getElementById('fRoleId').value;
+      const is_active = document.getElementById('fIsActive').checked ? 1 : 0;
+
+      if (!username || !display_name || !role_id) { showToast('Vui lòng điền đủ thông tin.', false); return; }
+      try {
+        if (id) {
+          await apiFetch(`/users/${id}`, { method: 'PUT', body: JSON.stringify({ display_name, role_id, is_active }) });
+        } else {
+          await apiFetch('/users', { method: 'POST', body: JSON.stringify({ username, display_name, role_id }) });
+        }
+        _userModalInstance.hide();
+        showToast(id ? 'Đã cập nhật user.' : 'Đã thêm user mới.');
+        await loadAll();
+        if (window.reloadNavUsers) window.reloadNavUsers();
+      } catch (e) { showToast(e.message, false); }
+    }
+
+    async function deleteUser(id, name) {
+      if (!confirm(`Xóa user "${name}"?`)) return;
+      try {
+        await apiFetch(`/users/${id}`, { method: 'DELETE' });
+        showToast('Đã xóa user.');
+        await loadAll();
+        if (window.reloadNavUsers) window.reloadNavUsers();
+      } catch (e) { showToast(e.message, false); }
+    }
+
+    // ── ROLES tab ───────────────────────────────────────────────────
+    function renderRoles() {
+      if (!_roles.length) {
+        document.getElementById('rolesTableWrap').innerHTML = '<p class="text-muted">Không có role nào.</p>';
+        return;
+      }
+      let html = `<table class="table table-hover table-sm align-middle">
+        <thead class="table-light"><tr>
+          <th>ID</th><th>Tên</th><th>Mô tả</th><th>Users</th><th>Categories</th><th>Tạo lúc</th><th>Hành động</th>
+        </tr></thead><tbody>`;
+      _roles.forEach(r => {
+        html += `<tr>
+          <td><code>${r.id}</code></td>
+          <td>${r.name}</td>
+          <td class="text-muted small">${r.description || ''}</td>
+          <td><span class="badge bg-info text-dark">${r.user_count || 0}</span></td>
+          <td><span class="badge bg-secondary">${r.category_count || 0}</span></td>
+          <td class="small text-muted">${fmtDate(r.created_at)}</td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary me-1" onclick="openRoleModal(${JSON.stringify(r).replace(/"/g, '&quot;')})">✏️</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteRole('${r.id}')">🗑</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      document.getElementById('rolesTableWrap').innerHTML = html;
+    }
+
+    let _roleModalInstance = null;
+
+    function openRoleModal(role = null) {
+      document.getElementById('editRoleId').value = role ? role.id : '';
+      document.getElementById('roleModalTitle').textContent = role ? 'Chỉnh sửa Role' : 'Thêm Role';
+      document.getElementById('fRoleIdWrap').style.display = role ? 'none' : 'block';
+      document.getElementById('fRoleIdInput').value = role ? role.id : '';
+      document.getElementById('fRoleIdInput').disabled = !!role;
+      document.getElementById('fRoleName').value = role ? role.name : '';
+      document.getElementById('fRoleDesc').value = role ? (role.description || '') : '';
+
+      _roleModalInstance = bootstrap.Modal.getOrCreateInstance(document.getElementById('roleModal'));
+      _roleModalInstance.show();
+    }
+
+    async function saveRole() {
+      const existingId = document.getElementById('editRoleId').value;
+      const id = existingId || document.getElementById('fRoleIdInput').value.trim().toLowerCase().replace(/\s+/g, '_');
+      const name = document.getElementById('fRoleName').value.trim();
+      const description = document.getElementById('fRoleDesc').value.trim();
+
+      if (!id || !name) { showToast('Vui lòng nhập đủ ID và Tên role.', false); return; }
+      try {
+        if (existingId) {
+          await apiFetch(`/roles/${existingId}`, { method: 'PUT', body: JSON.stringify({ name, description }) });
+        } else {
+          await apiFetch('/roles', { method: 'POST', body: JSON.stringify({ id, name, description }) });
+        }
+        _roleModalInstance.hide();
+        showToast(existingId ? 'Đã cập nhật role.' : 'Đã thêm role mới.');
+        await loadAll();
+        if (window.reloadNavUsers) window.reloadNavUsers();
+      } catch (e) { showToast(e.message, false); }
+    }
+
+    async function deleteRole(id) {
+      if (!confirm(`Xóa role "${id}"? Không thể xóa nếu còn user sử dụng.`)) return;
+      try {
+        await apiFetch(`/roles/${id}`, { method: 'DELETE' });
+        showToast('Đã xóa role.');
+        await loadAll();
+      } catch (e) { showToast(e.message, false); }
+    }
+
+    // ── PERMISSIONS tab ─────────────────────────────────────────────
+    // Loaded lazily when tab is first activated
+    let _permsData = {};   // { role_id: Set<category_id> }
+
+    document.getElementById('tabPerms').closest('.tab-pane')
+      .parentElement.parentElement
+      .querySelector('[data-bs-target="#tabPerms"]')
+      .addEventListener('shown.bs.tab', loadPerms);
+
+    async function loadPerms() {
+      // Build permission map
+      _permsData = {};
+      await Promise.all(_roles.map(async r => {
+        const cats = await apiFetch(`/roles/${r.id}/categories`);
+        _permsData[r.id] = new Set(cats);
+      }));
+      renderPerms();
+    }
+
+    function renderPerms() {
+      if (!_roles.length || !_categories.length) {
+        document.getElementById('permsTableWrap').innerHTML = '<p class="text-muted">Chưa có roles hoặc categories.</p>';
+        return;
+      }
+      let html = `<div class="table-responsive"><table class="table table-bordered table-sm align-middle" style="min-width:600px">
+        <thead class="table-light"><tr>
+          <th>Role</th>`;
+      _categories.forEach(c => {
+        html += `<th class="perm-cell text-center small" title="${c.description || ''}">${c.name}<br><code class="text-muted" style="font-size:.68rem">${c.id}</code></th>`;
+      });
+      html += '</tr></thead><tbody>';
+      _roles.forEach(r => {
+        html += `<tr><td><strong>${r.name}</strong><br><code class="text-muted small">${r.id}</code></td>`;
+        _categories.forEach(c => {
+          const checked = (_permsData[r.id] && _permsData[r.id].has(c.id)) ? 'checked' : '';
+          html += `<td class="perm-cell"><input type="checkbox" data-role="${r.id}" data-cat="${c.id}" ${checked} /></td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      document.getElementById('permsTableWrap').innerHTML = html;
+    }
+
+    async function savePerms() {
+      // Collect checkbox states
+      const newPerms = {};  // { role_id: [cat_id,...] }
+      document.querySelectorAll('#permsTableWrap input[type=checkbox]').forEach(cb => {
+        const r = cb.dataset.role, c = cb.dataset.cat;
+        if (!newPerms[r]) newPerms[r] = [];
+        if (cb.checked) newPerms[r].push(c);
+      });
+      try {
+        await Promise.all(Object.entries(newPerms).map(([roleId, cats]) =>
+          apiFetch(`/roles/${roleId}/categories`, { method: 'PUT', body: JSON.stringify({ category_ids: cats }) })
+        ));
+        showToast('Đã lưu phân quyền thành công.');
+        await loadAll();
+        await loadPerms();
+      } catch (e) { showToast(e.message, false); }
+    }
+
+    // ── Init ────────────────────────────────────────────────────────
+    loadAll();
+  </script>
+</body>
+</html>

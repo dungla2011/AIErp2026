@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Messages — Bot MVP</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { background: #f0f2f5; }
+    .msg-table td { vertical-align: middle; font-size: .85rem; }
+    .msg-table td.content-cell {
+      max-width: 320px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: default;
+    }
+    .role-user     { color: #0d6efd; font-weight: 600; }
+    .role-assistant{ color: #198754; font-weight: 600; }
+    .cost-usd  { color: #f5576c; font-weight: 600; }
+    .cost-vnd  { color: #6c757d; font-size: .8rem; }
+    .page-link { cursor: pointer; }
+    #filterBar select { min-width: 130px; }
+  </style>
+</head>
+<body>
+
+<nav id="app-nav" class="navbar app-navbar navbar-expand-lg" data-active="messages"></nav>
+
+<div class="container-fluid py-4" style="max-width:1400px">
+
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <h5 class="mb-0">💬 Tất cả Messages</h5>
+    <span id="totalBadge" class="badge bg-secondary">—</span>
+    <div id="filterBar" class="d-flex gap-2 ms-auto flex-wrap">
+      <select id="roleFilter" class="form-select form-select-sm" onchange="goPage(1)">
+        <option value="">Tất cả role</option>
+        <option value="user">👤 User</option>
+        <option value="assistant">🤖 Assistant</option>
+      </select>
+      <button class="btn btn-sm btn-outline-secondary" onclick="goPage(currentPage)">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm msg-table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:140px">Thời gian</th>
+              <th style="width:90px">Role</th>
+              <th>Nội dung</th>
+              <th style="width:80px" class="text-end">In tok</th>
+              <th style="width:80px" class="text-end">Out tok</th>
+              <th style="width:100px" class="text-end">USD</th>
+              <th style="width:100px" class="text-end">VNĐ</th>
+              <th style="width:100px">Conv ID</th>
+            </tr>
+          </thead>
+          <tbody id="msgBody">
+            <tr><td colspan="8" class="text-center text-muted py-4">⏳ Đang tải...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <small class="text-muted" id="pageInfo">—</small>
+      <nav><ul class="pagination pagination-sm mb-0" id="pager"></ul></nav>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="nav.js"></script>
+<script>
+  const API_PORT = "{{API_PORT}}".includes('{') ? "8100" : "{{API_PORT}}";
+  const API_URL  = "{{API_URL}}".includes('{') ? `http://${window.location.hostname}:${API_PORT}` : "{{API_URL}}";
+  initNav(API_URL);
+
+  const PER_PAGE = 20;
+  let currentPage = 1;
+
+  function fmtTime(ts) {
+    if (!ts) return '—';
+    return new Date(ts).toLocaleString('vi-VN', {
+      day: '2-digit', month: '2-digit', year: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  function esc(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  async function loadMessages(page) {
+    currentPage = page;
+    const role = document.getElementById('roleFilter').value;
+    const params = new URLSearchParams({ page, per_page: PER_PAGE });
+    if (role) params.set('role', role);
+
+    try {
+      const res = await fetch(`${API_URL}/messages?${params}`);
+      const data = await res.json();
+      renderTable(data);
+      renderPager(data.page, data.total_pages);
+      document.getElementById('totalBadge').textContent = `${data.total.toLocaleString()} tin`;
+      document.getElementById('pageInfo').textContent =
+        `Trang ${data.page} / ${data.total_pages}  (${data.total.toLocaleString()} bản ghi)`;
+    } catch(e) {
+      document.getElementById('msgBody').innerHTML =
+        `<tr><td colspan="8" class="text-center text-danger py-4">❌ Lỗi kết nối API</td></tr>`;
+    }
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('msgBody');
+    if (!data.messages.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Không có dữ liệu</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.messages.map(m => {
+      const roleClass = m.role === 'user' ? 'role-user' : 'role-assistant';
+      const roleLabel = m.role === 'user' ? '👤 User' : '🤖 Bot';
+      const costUsd   = m.cost_usd != null ? `<span class="cost-usd">$${m.cost_usd.toFixed(6)}</span>` : '<span class="text-muted">—</span>';
+      const costVnd   = m.cost_usd != null
+        ? `<span class="cost-vnd">${Math.round(m.cost_usd * 25500).toLocaleString('vi-VN')}₫</span>`
+        : '<span class="text-muted">—</span>';
+      const inTok  = m.input_tokens  != null ? m.input_tokens.toLocaleString()  : '—';
+      const outTok = m.output_tokens != null ? m.output_tokens.toLocaleString() : '—';
+      const convShort = m.conversation_id ? m.conversation_id.slice(0,8) + '…' : '—';
+      const fullContent = esc(m.content || '');
+      return `<tr>
+        <td class="text-muted">${fmtTime(m.created_at)}</td>
+        <td class="${roleClass}">${roleLabel}</td>
+        <td class="content-cell" title="${fullContent}">${esc((m.content || '').slice(0, 300))}</td>
+        <td class="text-end text-muted">${inTok}</td>
+        <td class="text-end text-muted">${outTok}</td>
+        <td class="text-end">${costUsd}</td>
+        <td class="text-end">${costVnd}</td>
+        <td class="text-muted small" title="${esc(m.conversation_id || '')}">${convShort}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderPager(page, totalPages) {
+    const pager = document.getElementById('pager');
+    if (totalPages <= 1) { pager.innerHTML = ''; return; }
+
+    const MAX_VISIBLE = 7;
+    let pages = [];
+
+    if (totalPages <= MAX_VISIBLE) {
+      pages = Array.from({length: totalPages}, (_, i) => i + 1);
+    } else {
+      pages = [1];
+      let start = Math.max(2, page - 2);
+      let end   = Math.min(totalPages - 1, page + 2);
+      if (start > 2) pages.push('…');
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (end < totalPages - 1) pages.push('…');
+      pages.push(totalPages);
+    }
+
+    pager.innerHTML =
+      `<li class="page-item${page === 1 ? ' disabled' : ''}">
+         <a class="page-link" onclick="goPage(${page - 1})">‹</a></li>` +
+      pages.map(p => p === '…'
+        ? `<li class="page-item disabled"><a class="page-link">…</a></li>`
+        : `<li class="page-item${p === page ? ' active' : ''}">
+             <a class="page-link" onclick="goPage(${p})">${p}</a></li>`
+      ).join('') +
+      `<li class="page-item${page === totalPages ? ' disabled' : ''}">
+         <a class="page-link" onclick="goPage(${page + 1})">›</a></li>`;
+  }
+
+  function goPage(p) {
+    if (p < 1) return;
+    loadMessages(p);
+    window.scrollTo(0, 0);
+  }
+
+  window.addEventListener('load', () => loadMessages(1));
+</script>
+</body>
+</html>

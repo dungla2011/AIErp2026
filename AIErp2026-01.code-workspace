@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../AI-setup-clawbot/MVP-bot-api"
+		}
+	],
+	"settings": {}
+}
