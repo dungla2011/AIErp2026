@@ -15,6 +15,17 @@ Role-based access control:
 
 from database import OrdersDB
 from typing import Any
+import requests
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
+
+API_BASE = os.getenv("API_BASE", "http://localhost:8100")
+AUTH_PASSWORD_MD5 = os.getenv("AUTH_PASSWORD_MD5", "081904e6952d21450814cd3c465cf059")
 
 
 def _check_permission(user_role: str, required_role: str) -> bool:
@@ -53,13 +64,40 @@ def get_orders(limit: int = 5, user_role: str = "customer") -> Any:
       - customer: allowed
       - staff, admin: allowed
 
-    [MOCK → DB]  Đọc từ bảng orders trong SQLite.
-    [REAL API]   Thay bằng: requests.get(f"{API_BASE}/orders?limit={limit}").json()
+    Gọi API endpoint /orders và format kết quả cho Claude
     """
-    orders = OrdersDB.get_orders(limit)
-    if not orders:
-        return {"message": "Không có đơn hàng nào."}
-    return orders
+    try:
+        headers = {"Authorization": f"Bearer {AUTH_PASSWORD_MD5}"}
+        response = requests.get(f"{API_BASE}/orders?limit={limit}", headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            orders = data.get("orders", [])
+            
+            if not orders:
+                return {"message": "Không có đơn hàng nào."}
+            
+            # Format orders for Claude
+            formatted_orders = []
+            for order in orders:
+                formatted_orders.append({
+                    "id": order.get("id"),
+                    "customer": order.get("customer"),
+                    "amount": order.get("amount"),
+                    "status": order.get("status"),
+                    "created_at": order.get("created_at"),
+                    "expected_delivery": order.get("expected_delivery"),
+                    "delivered_at": order.get("delivered_at")
+                })
+            
+            return {
+                "total": data.get("total", 0),
+                "orders": formatted_orders
+            }
+        else:
+            return {"error": f"API error: {response.status_code}", "details": response.text}
+    except Exception as e:
+        return {"error": f"Failed to fetch orders: {str(e)}"}
 
 
 # ─────────────────────────────────────────────

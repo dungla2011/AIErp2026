@@ -417,6 +417,41 @@ def delete_conversation(conversation_id: str):
     raise HTTPException(status_code=404, detail="Conversation not found")
 
 
+# ── Orders API ──────────────────────────────────────────────────────────────
+
+@app.get("/orders")
+def get_orders(limit: int = 10):
+    """Get recent orders from database"""
+    try:
+        with get_db() as conn:
+            rows = conn.cursor().execute("""
+                SELECT id, customer, amount, status, created_at, expected_delivery, delivered_at
+                FROM orders
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+        
+        orders = []
+        for row in rows:
+            orders.append({
+                "id": row["id"],
+                "customer": row["customer"],
+                "amount": row["amount"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "expected_delivery": row["expected_delivery"],
+                "delivered_at": row["delivered_at"]
+            })
+        
+        return {
+            "total": len(orders),
+            "orders": orders
+        }
+    except Exception as e:
+        print(f"   ❌ Error fetching orders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── User / Role management ──────────────────────────────────────────────────
 
 class CreateUserRequest(BaseModel):
