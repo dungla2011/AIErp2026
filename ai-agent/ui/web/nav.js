@@ -24,6 +24,8 @@
     { key: 'settings', href: 'settings.html', icon: '&#x2699;&#xFE0F;', label: 'Settings' },
   ];
 
+  // Helper: getAuthHeaders() is now centralized in api.js
+
   // ── State ────────────────────────────────────────────────────────────
   let _users = [];        // cached user list
   let _currentUser = null;
@@ -87,6 +89,9 @@
             <span class="stat-sep">|</span>
             <div class="stat-item"><span class="stat-label">Cost:</span><span class="stat-value" id="statCost">&mdash;</span></div>
           </div>
+          <button id="logoutBtn" class="btn btn-danger btn-sm" title="Logout - xoá cookie và localStorage" style="white-space:nowrap;">
+            📤 Logout
+          </button>
         </div>
       </div>`;
 
@@ -95,9 +100,7 @@
 
     async function loadUsers() {
       try {
-        const res = await fetch(`${apiUrl}/users`);
-        if (!res.ok) return;
-        _users = await res.json();
+        _users = await api.get('/users');
 
         // Rebuild options
         sel.innerHTML = '<option value="">👤 Chọn user...</option>';
@@ -136,9 +139,7 @@
     // ── Usage pill ──────────────────────────────────────────────────
     async function refreshStats() {
       try {
-        const res = await fetch(`${apiUrl}/stats`);
-        if (!res.ok) return;
-        const d = await res.json();
+        const d = await api.get('/stats');
         const totalTokens = (d.total_input_tokens || 0) + (d.total_output_tokens || 0);
         document.getElementById('statRequests').textContent = (d.total_requests || 0).toLocaleString();
         document.getElementById('statTokens').textContent =
@@ -152,5 +153,26 @@
     window.updateUsageStats = refreshStats;
     refreshStats();
     setInterval(refreshStats, 15000);
+
+    // ── Logout ──────────────────────────────────────────────────────
+    function logout() {
+      // Xoá cookie
+      _deleteCookie(COOKIE_NAME);
+      _deleteCookie('bot_mvp_auth');
+      
+      // Xoá localStorage
+      localStorage.removeItem('bot_api_token');
+      localStorage.removeItem('chatUserRole');
+      localStorage.removeItem('lastConversationId');
+      
+      // Redirect về login
+      window.location.href = '/login.html';
+    }
+
+    // Attach logout button event
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', logout);
+    }
   };
 }());

@@ -36,6 +36,7 @@ from database import UsageStatsDB, ConversationDB, UserMemoryDB, init_database, 
 from memory import update_user_memory_async, should_summarize
 from docs_api import router as docs_router
 from rag import retrieve as rag_retrieve, format_context, get_allowed_categories
+from auth import verify_password, AUTH_PASSWORD_MD5
 
 app = FastAPI(title="Bot MVP API", version="1.0")
 
@@ -61,6 +62,36 @@ async def global_exception_handler(request, exc):
 # Add request logging middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Check authentication token on all endpoints except /login and /health"""
+    async def dispatch(self, request: Request, call_next):
+        # Endpoints that don't require auth
+        public_paths = ["/login", "/health", "/docs", "/openapi.json"]
+        
+        # Allow OPTIONS requests (CORS preflight) without auth
+        if request.method == "OPTIONS" or request.url.path in public_paths:
+            return await call_next(request)
+        
+        # Get token from Authorization header or query param
+        token = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            token = request.query_params.get("token")
+        
+        # Check token
+        if token != AUTH_PASSWORD_MD5:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized. Invalid or missing token."},
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+        
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -97,7 +128,40 @@ class ChatResponse(BaseModel):
     cost_usd: Optional[float] = None
     timestamp: str
 
+class LoginRequest(BaseModel):
+    password: str
+
+class LoginResponse(BaseModel):
+    token: str
+    message: str
+
 # Routes
+
+@app.post("/login")
+def login(request: LoginRequest):
+    """
+    Authenticate with password and get API token
+    
+    Request:
+    ```json
+    {"password": "your_password"}
+    ```
+    
+    Response:
+    ```json
+    {"token": "md5_hash_of_password", "message": "Login successful"}
+    ```
+    
+    Use token in subsequent requests:
+    - Header: Authorization: Bearer <token>
+    - Query param: ?token=<token>
+    """
+    if verify_password(request.password):
+        return LoginResponse(
+            token=AUTH_PASSWORD_MD5,
+            message="Login successful. Use this token in Authorization header or ?token= query param"
+        )
+    raise HTTPException(status_code=401, detail="Invalid password")
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
