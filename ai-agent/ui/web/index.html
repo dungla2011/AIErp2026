@@ -51,6 +51,11 @@
       <option value="staff">🛡️ Staff</option>
       <option value="admin">⚙️ Admin</option>
     </select>
+    <select id="topicSelect" title="Chọn chủ đề hỏi"
+      style="border:none;background:#e0f2f7;border-radius:6px;padding:4px 8px;font-size:.8rem;color:#333;flex-shrink:0;">
+      <option value="business">📊 Số liệu Kinh doanh</option>
+      <option value="documents">📄 Tài liệu</option>
+    </select>
     <input type="text" class="chat-input" id="messageInput" placeholder="Nhập tin nhắn..." onkeyup="handleKeyUp(event)">
     <button class="btn btn-grad px-4" onclick="sendMessage()" id="sendBtn">&#x1F4E4; Gửi</button>
     <button class="btn btn-new px-3" onclick="startNewConversation()" title="Ctrl+N">&#x1F504; Mới</button>
@@ -138,10 +143,14 @@
       const loadingId = "loading-" + Date.now();
       addLoading(loadingId);
       try {
+        const topicSelect = document.getElementById('topicSelect');
+        const topic = topicSelect.value; // "business" or "documents"
+        
         const data = await api.post('/chat', {
           message,
           conversation_id: conversationId,
-          user_id: getEffectiveUserId()
+          user_id: getEffectiveUserId(),
+          topic: topic  // Add topic to request
         });
         conversationId = data.conversation_id;
         convIdSpan.textContent = conversationId.substring(0, 8) + "...";

@@ -63,11 +63,28 @@ print("="*60)
 # Main bot function
 def build_system_prompt(user_memory: str = "", retrieved_context: str = "",
                         user_role: str = "customer",
-                        restricted_access: bool = False) -> str:
+                        restricted_access: bool = False,
+                        topic: str = "business") -> str:
     base = BASE_PROMPT
 
     # Fetch display name from DB (roles.name) — no hardcoding
     role_label = get_role_label(user_role)
+
+    # ── Topic guidance ───────────────────────────────────────────────────
+    if topic == "business":
+        base += (
+            f"\n\n---\n## Chế độ: Số liệu Kinh doanh\n"
+            f"Người dùng muốn hỏi về: đơn hàng, doanh thu, thống kê, hiệu suất bán hàng.\n"
+            f"TỰ ĐỘNG gọi các tools: get_orders, query_invoices, get_invoice_stats\n"
+            f"để truy vấn SQL Server. KHÔNG dùng RAG tài liệu."
+        )
+    else:  # topic == "documents"
+        base += (
+            f"\n\n---\n## Chế độ: Tài liệu\n"
+            f"Người dùng muốn hỏi về: hướng dẫn, quy định, chứng chỉ, chính sách.\n"
+            f"Dùng thông tin từ tài liệu đã được tải (RAG context bên dưới).\n"
+            f"KHÔNG cần gọi tools SQL để trả lời."
+        )
 
     # ── Role boundary (always injected — label comes from DB) ───────────
     base += (
@@ -103,7 +120,8 @@ def build_system_prompt(user_memory: str = "", retrieved_context: str = "",
 
 def chat_with_claude(user_message, conversation_history=None, conversation_id=None,
                      user_memory: str = "", retrieved_context: str = "",
-                     user_role: str = "customer", restricted_access: bool = False):
+                     user_role: str = "customer", restricted_access: bool = False,
+                     topic: str = "business"):
     """
     Chat với Claude, tự động gọi tools khi cần
     """
@@ -117,7 +135,7 @@ def chat_with_claude(user_message, conversation_history=None, conversation_id=No
     })
     
     # System prompt with injected user memory
-    system_prompt = build_system_prompt(user_memory, retrieved_context, user_role, restricted_access)
+    system_prompt = build_system_prompt(user_memory, retrieved_context, user_role, restricted_access, topic)
 
     # Accumulate token usage across all API calls (incl. tool-use rounds)
     _total_input = 0
@@ -161,6 +179,24 @@ def chat_with_claude(user_message, conversation_history=None, conversation_id=No
             tool_use_block.input,
             user_role=user_role
         )
+        
+        # Log SQL query to messages if tool_result contains debug info
+        if tool_use_block.name in ["query_invoices", "get_orders"] and isinstance(tool_result, dict):
+            sql_debug = tool_result.get("_debug") or tool_result.get("sql")
+            if sql_debug:
+                # Save SQL query as debug message (no user_id needed for debug logs)
+                try:
+                    ConversationDB.add_message(
+                        conversation_id,
+                        content=f"🔍 [SQL Query]\n```sql\n{sql_debug}\n```",
+                        sender='bot',
+                        user_id=None
+                    )
+                except Exception as e:
+                    print(f"   ⚠️ Failed to log SQL: {e}")
+            # Remove debug fields before sending to Claude
+            tool_result.pop("_debug", None)
+            tool_result.pop("_sql", None)
         
         # Add assistant response and tool result to history
         conversation_history.append({

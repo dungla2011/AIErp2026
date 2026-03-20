@@ -1,0 +1,113 @@
+{
+"columns": [
+{
+"COLUMN_NAME": "id",
+"DATA_TYPE": "bigint",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "NO"
+},
+{
+"COLUMN_NAME": "ma_hoa_don",
+"DATA_TYPE": "bigint",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "ten_khach_hang",
+"DATA_TYPE": "nvarchar",
+"CHARACTER_MAXIMUM_LENGTH": 255,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "so_dien_thoai",
+"DATA_TYPE": "varchar",
+"CHARACTER_MAXIMUM_LENGTH": 20,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "nhan_vien",
+"DATA_TYPE": "nvarchar",
+"CHARACTER_MAXIMUM_LENGTH": 255,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "cua_hang",
+"DATA_TYPE": "nvarchar",
+"CHARACTER_MAXIMUM_LENGTH": 50,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "dia_chi",
+"DATA_TYPE": "nvarchar",
+"CHARACTER_MAXIMUM_LENGTH": 500,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "ngay",
+"DATA_TYPE": "datetime",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "link",
+"DATA_TYPE": "ntext",
+"CHARACTER_MAXIMUM_LENGTH": 1073741823,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "dien_gia",
+"DATA_TYPE": "ntext",
+"CHARACTER_MAXIMUM_LENGTH": 1073741823,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "tien_ck",
+"DATA_TYPE": "decimal",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "tong_tien",
+"DATA_TYPE": "decimal",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "tong_tien_chuyen_khoan",
+"DATA_TYPE": "decimal",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "trang_thai_thanh_toan",
+"DATA_TYPE": "int",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "trang_thai_tra_hang",
+"DATA_TYPE": "int",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "ma_dat_coc",
+"DATA_TYPE": "varchar",
+"CHARACTER_MAXIMUM_LENGTH": 100,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "created_at",
+"DATA_TYPE": "datetime",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+},
+{
+"COLUMN_NAME": "updated_at",
+"DATA_TYPE": "datetime",
+"CHARACTER_MAXIMUM_LENGTH": null,
+"IS_NULLABLE": "YES"
+}
+],
+"table_name": "hoa_don"
+}

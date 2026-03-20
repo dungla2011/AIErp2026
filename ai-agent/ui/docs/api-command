@@ -1,0 +1,8 @@
+curl --location 'http://118.70.146.150:8888/api/public/execute' \
+--header 'Content-Type: text/plain' \
+--data 'SELECT * FROM kava_pos.dbo.hoa_don'
+
+
+curl --location 'http://118.70.146.150:8888/api/public/execute' \
+--header 'Content-Type: text/plain' \
+--data 'SELECT TOP 3 * FROM kava_pos.dbo.hoa_don'

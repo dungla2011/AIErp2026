@@ -118,6 +118,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[int] = None        # DB user id (integer)
     user_role: Optional[str] = "customer" # customer | staff | admin
     category_hint: Optional[str] = None   # which doc category to search (optional)
+    topic: Optional[str] = "business"      # "business" (SQL) or "documents" (RAG)
 
 class ChatResponse(BaseModel):
     conversation_id: str
@@ -193,6 +194,7 @@ async def chat(request: ChatRequest):
     print(f"   Message: {request.message[:50]}...")
     print(f"   Conv ID: {request.conversation_id}")
     print(f"   User ID: {request.user_id}")
+    print(f"   Topic: {request.topic or 'business'}")
     
     try:
         # Get or create conversation
@@ -227,25 +229,35 @@ async def chat(request: ChatRequest):
                 print(f"   🧠 No memory yet for user_id={request.user_id}")
 
         # RAG: retrieve relevant document chunks (based on user role + optional category)
+        # ONLY if topic is "documents", skip for "business" topic
         retrieved_context = ""
         restricted_access = False   # True when role has a limited category whitelist
-        try:
-            allowed = await asyncio.to_thread(get_allowed_categories, effective_role)
-            restricted_access = (allowed is not None)  # None = unrestricted (all categories)
-            chunks = await asyncio.to_thread(
-                rag_retrieve, request.message,
-                effective_role,
-                5,   # top_k
-                0.30, # min_score
-                request.category_hint,
-            )
-            if chunks:
-                retrieved_context = format_context(chunks)
-                print(f"   📚 RAG: {len(chunks)} chunks retrieved (top score: {chunks[0]['score']}, role={effective_role}, restricted={restricted_access})")
-            else:
-                print(f"   📚 RAG: 0 chunks (role={effective_role}, restricted={restricted_access}, no relevant docs in allowed categories)")
-        except Exception as e:
-            print(f"   ⚠️ RAG retrieval failed (non-blocking): {e}")
+        
+        topic = request.topic or "business"
+        print(f"   📋 Processing topic: {topic}")
+        
+        if topic == "documents":
+            # RAG mode - retrieve from documents
+            try:
+                allowed = await asyncio.to_thread(get_allowed_categories, effective_role)
+                restricted_access = (allowed is not None)  # None = unrestricted (all categories)
+                chunks = await asyncio.to_thread(
+                    rag_retrieve, request.message,
+                    effective_role,
+                    5,   # top_k
+                    0.30, # min_score
+                    request.category_hint,
+                )
+                if chunks:
+                    retrieved_context = format_context(chunks)
+                    print(f"   📚 RAG: {len(chunks)} chunks retrieved (top score: {chunks[0]['score']}, role={effective_role}, restricted={restricted_access})")
+                else:
+                    print(f"   📚 RAG: 0 chunks (role={effective_role}, restricted={restricted_access}, no relevant docs in allowed categories)")
+            except Exception as e:
+                print(f"   ⚠️ RAG retrieval failed (non-blocking): {e}")
+        else:
+            # Business data mode - no RAG, will use SQL tools
+            print(f"   📊 Business mode: skipping RAG, will use SQL tools for data")
         
         # Save user message to DB
         _db_uid = db_user["id"] if db_user else None
@@ -254,7 +266,7 @@ async def chat(request: ChatRequest):
         # Get bot response (run sync function in thread to not block event loop)
         bot_response, history, usage = await asyncio.to_thread(
             chat_with_claude, request.message, history, conv_id,
-            user_memory, retrieved_context, effective_role, restricted_access
+            user_memory, retrieved_context, effective_role, restricted_access, topic
         )
 
         # Save bot response to DB — user_id same as the user being served so history filters work
@@ -449,6 +461,55 @@ def get_orders(limit: int = 10):
         }
     except Exception as e:
         print(f"   ❌ Error fetching orders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Invoice Statistics (from SQL Server) ────────────────────────────────────
+
+@app.get("/invoice-stats")
+def get_invoice_stats(stat_type: str = "total_revenue"):
+    """Get invoice statistics from SQL Server kava_pos database"""
+    print(f"\n🔍 [API] GET /invoice-stats called (stat_type={stat_type})")
+    
+    try:
+        import requests
+        sql_api = "http://118.70.146.150:8888/api/public/execute"
+        
+        # Map stat_type to SQL query
+        queries = {
+            "total_revenue": "SELECT SUM(tong_tien) as total_revenue FROM kava_pos.dbo.hoa_don",
+            "total_paid": "SELECT SUM(tong_tien_chuyen_khoan) as total_paid FROM kava_pos.dbo.hoa_don",
+            "invoice_count": "SELECT COUNT(*) as count FROM kava_pos.dbo.hoa_don",
+            "avg_invoice": "SELECT AVG(tong_tien) as avg_value FROM kava_pos.dbo.hoa_don",
+            "unpaid_count": "SELECT COUNT(*) as count FROM kava_pos.dbo.hoa_don WHERE trang_thai_thanh_toan = 0",
+            "unreturned_count": "SELECT COUNT(*) as count FROM kava_pos.dbo.hoa_don WHERE trang_thai_tra_hang = 0",
+        }
+        
+        if stat_type not in queries:
+            raise HTTPException(status_code=400, detail=f"Unknown stat_type: {stat_type}")
+        
+        sql = queries[stat_type]
+        print(f"   📊 Executing: {sql[:50]}...")
+        
+        response = requests.post(
+            sql_api,
+            headers={"Content-Type": "text/plain"},
+            data=sql,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"   ✅ Result: {result}")
+            return {
+                "stat_type": stat_type,
+                "data": result[0] if result else {}
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"SQL API error: {response.text}")
+    
+    except Exception as e:
+        print(f"   ❌ Error fetching stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
