@@ -378,5 +378,21 @@
     loadDocuments();
   });
 </script>
+
+<!-- Log Modal -->
+<div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="logModalLabel">📋 Log xử lý</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="logModalPre" style="background:#f5f5f5; padding:12px; border-radius:4px; max-height:400px; overflow-y:auto; font-size:0.85rem; font-family:monospace;">Đang tải...</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
