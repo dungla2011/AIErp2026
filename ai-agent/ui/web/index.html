@@ -172,46 +172,33 @@
 
     async function loadConversationHistory() {
       const uid = getEffectiveUserId();
+      console.log("📝 loadConversationHistory: uid =", uid);
 
-      if (uid) {
-        // Load all messages for this user (user_id-based, most reliable)
-        try {
-          const data = await api.get(`/messages/user/${uid}`);
-          if (data) {
-            if (data.conversation_id) {
-              conversationId = data.conversation_id;
-              convIdSpan.textContent = conversationId.substring(0, 8) + "...";
-              localStorage.setItem('lastConversationId', conversationId);
-              window.history.replaceState({}, '', `?conv_id=${conversationId}`);
-            }
-            if (data.history && data.history.length > 0) {
-              data.history.forEach(msg => addMessage(msg.content, msg.role === 'bot' ? 'bot' : 'user', msg.created_at));
-            }
-          }
-        } catch(e) {}
+      if (!uid) {
+        console.log("   ⚠️ No user selected, skipping history load");
         return;
       }
 
-      // Fallback: no user selected — try conv_id from URL/localStorage
-      const urlParams = new URLSearchParams(window.location.search);
-      let savedConvId = urlParams.get('conv_id') || localStorage.getItem('lastConversationId');
-      if (!savedConvId) {
-        try {
-          const d = await api.get('/conversations/latest');
-          if (d) savedConvId = d.conversation_id;
-        } catch(e) {}
-      }
-      if (savedConvId) {
-        try {
-          const data = await api.get(`/conversations/${savedConvId}`);
-          if (data) {
-            conversationId = data.conversation_id;
-            convIdSpan.textContent = conversationId.substring(0, 8) + "...";
-            if (data.history && data.history.length > 0) {
-              data.history.forEach(msg => addMessage(msg.content, msg.role, msg.created_at));
-            }
-          }
-        } catch(e) {}
+      try {
+        // Load all messages for this user (by user_id)
+        const data = await api.get(`/messages/user/${uid}`);
+        console.log("   ✅ Loaded messages for user", uid, ":", data);
+        
+        if (data && data.history && data.history.length > 0) {
+          console.log("   📊 Found", data.history.length, "messages, rendering...");
+          data.history.forEach(msg => addMessage(msg.content, msg.role === 'bot' ? 'bot' : 'user', msg.created_at));
+        } else {
+          console.log("   ℹ️ No message history for this user");
+        }
+        
+        // If there's a latest conversation_id, use it for next message
+        if (data && data.conversation_id) {
+          conversationId = data.conversation_id;
+          convIdSpan.textContent = conversationId.substring(0, 8) + "...";
+          console.log("   💬 Set conversation_id:", conversationId);
+        }
+      } catch(e) {
+        console.error("❌ Error loading history:", e);
       }
     }
 

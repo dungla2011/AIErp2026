@@ -51,7 +51,9 @@
             <tr>
               <th style="width:140px">Thời gian</th>
               <th style="width:90px">Role</th>
+              <th style="width:80px">Channel</th>
               <th>Nội dung</th>
+              <th style="width:120px">Prompt</th>
               <th style="width:80px" class="text-end">In tok</th>
               <th style="width:80px" class="text-end">Out tok</th>
               <th style="width:100px" class="text-end">USD</th>
@@ -60,7 +62,7 @@
             </tr>
           </thead>
           <tbody id="msgBody">
-            <tr><td colspan="8" class="text-center text-muted py-4">⏳ Đang tải...</td></tr>
+            <tr><td colspan="10" class="text-center text-muted py-4">⏳ Đang tải...</td></tr>
           </tbody>
         </table>
       </div>
@@ -117,12 +119,13 @@
   function renderTable(data) {
     const tbody = document.getElementById('msgBody');
     if (!data.messages.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Không có dữ liệu</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Không có dữ liệu</td></tr>';
       return;
     }
     tbody.innerHTML = data.messages.map(m => {
       const roleClass = m.role === 'user' ? 'role-user' : 'role-assistant';
       const roleLabel = m.role === 'user' ? '👤 User' : '🤖 Bot';
+      const channelLabel = m.channel === 'business' ? '📊 KD' : m.channel === 'documents' ? '📄 Tài liệu' : '—';
       const costUsd   = m.cost_usd != null ? `<span class="cost-usd">$${m.cost_usd.toFixed(6)}</span>` : '<span class="text-muted">—</span>';
       const costVnd   = m.cost_usd != null
         ? `<span class="cost-vnd">${Math.round(m.cost_usd * 25500).toLocaleString('vi-VN')}₫</span>`
@@ -131,10 +134,15 @@
       const outTok = m.output_tokens != null ? m.output_tokens.toLocaleString() : '—';
       const convShort = m.conversation_id ? m.conversation_id.slice(0,8) + '…' : '—';
       const fullContent = esc(m.content || '');
+      const promptHtml = m.prompt 
+        ? `<button class="btn btn-sm btn-outline-info py-0 px-1" onclick="showPromptModal(${JSON.stringify(esc(m.prompt)).replace(/"/g, '&quot;')}, '${m.id}')">👁️ View</button>`
+        : '<span class="text-muted">—</span>';
       return `<tr>
         <td class="text-muted">${fmtTime(m.created_at)}</td>
         <td class="${roleClass}">${roleLabel}</td>
+        <td class="text-center text-muted">${channelLabel}</td>
         <td class="content-cell" title="${fullContent}">${esc((m.content || '').slice(0, 300))}</td>
+        <td>${promptHtml}</td>
         <td class="text-end text-muted">${inTok}</td>
         <td class="text-end text-muted">${outTok}</td>
         <td class="text-end">${costUsd}</td>
@@ -181,7 +189,32 @@
     window.scrollTo(0, 0);
   }
 
+  function showPromptModal(promptText, msgId) {
+    const modalBody = document.getElementById('promptModalBody');
+    const modalTitle = document.getElementById('promptModalTitle');
+    modalTitle.textContent = `🧠 System Prompt (Message #${msgId})`;
+    modalBody.innerHTML = `<pre style="background:#f8f9fa; padding:12px; border-radius:4px; max-height:400px; overflow-y:auto; font-size:0.85rem; font-family:monospace;">${promptText}</pre>`;
+    const modal = new bootstrap.Modal(document.getElementById('promptModal'));
+    modal.show();
+  }
+
   window.addEventListener('load', () => loadMessages(1));
 </script>
+
+<!-- Prompt Modal -->
+<div class="modal fade" id="promptModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="promptModalTitle">System Prompt</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="promptModalBody">
+        — loading —
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

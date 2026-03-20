@@ -26,17 +26,84 @@ api_key_check = os.getenv("ANTHROPIC_API_KEY")
 print(f"🔑 API Key in api.py: {api_key_check[:30] if api_key_check else 'None'}...{api_key_check[-10:] if api_key_check and len(api_key_check) > 40 else ''}")
 print("="*60)
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
-from bot import chat_with_claude
+import logging
+from datetime import datetime
+from pathlib import Path
+from bot import chat_with_claude, build_system_prompt
 from database import UsageStatsDB, ConversationDB, UserMemoryDB, init_database, get_db, get_user_by_id, get_role_label
 from memory import update_user_memory_async, should_summarize
 from docs_api import router as docs_router
 from rag import retrieve as rag_retrieve, format_context, get_allowed_categories
 from auth import verify_password, AUTH_PASSWORD_MD5
+
+# Initialize chat log file
+LOGS_DIR = Path(__file__).parent / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+CHAT_LOG_FILE = LOGS_DIR / "chats.log"
+
+def get_client_ip(request):
+    """Extract client IP from request (handles proxies)"""
+    if request.client:
+        return request.client.host
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return "unknown"
+
+def log_chat_exchange(request, conv_id: str, user_id: Optional[int], role: str, channel: str,
+                      user_message: str, system_prompt: str, bot_response: str,
+                      input_tokens: Optional[int], output_tokens: Optional[int], cost_usd: Optional[float]):
+    """Log chat exchange to chats.log file"""
+    try:
+        client_ip = get_client_ip(request)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        log_entry = f"""
+{'='*80}
+[{timestamp}] 🔹 CHAT EXCHANGE
+{'='*80}
+📍 Client IP: {client_ip}
+🆔 Conversation ID: {conv_id}
+👤 User ID: {user_id or 'N/A'}
+🎭 Role: {role}
+📊 Channel: {channel}
+
+{'─'*80}
+[USER MESSAGE]
+{'─'*80}
+{user_message}
+
+{'─'*80}
+[SYSTEM PROMPT]
+{'─'*80}
+{system_prompt}
+
+{'─'*80}
+[BOT RESPONSE]
+{'─'*80}
+{bot_response}
+
+{'─'*80}
+[TOKENS & COST]
+{'─'*80}
+💬 Input Tokens: {input_tokens or '—'}
+📤 Output Tokens: {output_tokens or '—'}
+💰 Cost (USD): ${(cost_usd if cost_usd is not None else 0):.6f}
+
+"""
+        
+        with open(CHAT_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+        
+        print(f"   ✅ Chat logged to {CHAT_LOG_FILE}")
+    except Exception as e:
+        print(f"   ⚠️ Failed to log chat: {e}")
+
 
 app = FastAPI(title="Bot MVP API", version="1.0")
 
@@ -182,7 +249,7 @@ def reset_stats():
     return {"status": "reset", "message": "Statistics cleared"}
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     """
     Chat with bot via API
     
@@ -259,9 +326,12 @@ async def chat(request: ChatRequest):
             # Business data mode - no RAG, will use SQL tools
             print(f"   📊 Business mode: skipping RAG, will use SQL tools for data")
         
+        # Build system prompt for reference
+        system_prompt = build_system_prompt(user_memory, retrieved_context, effective_role, restricted_access, topic)
+        
         # Save user message to DB
         _db_uid = db_user["id"] if db_user else None
-        ConversationDB.add_message(conv_id, content=request.message, sender='user', user_id=_db_uid)
+        ConversationDB.add_message(conv_id, content=request.message, sender='user', user_id=_db_uid, channel=topic)
         
         # Get bot response (run sync function in thread to not block event loop)
         bot_response, history, usage = await asyncio.to_thread(
@@ -276,6 +346,8 @@ async def chat(request: ChatRequest):
             output_tokens=usage.get("output_tokens"),
             cost_usd=usage.get("cost_usd"),
             user_id=_db_uid,
+            prompt=system_prompt,  # Save the system prompt for reference
+            channel=topic,  # Save the topic/channel selected
         )
         
         # Store conversation in memory (for backward compatibility)
@@ -286,6 +358,21 @@ async def chat(request: ChatRequest):
         if _db_uid and should_summarize(_db_uid):
             print(f"   🧠 Scheduling memory update for user_id={_db_uid}...")
             asyncio.create_task(update_user_memory_async(str(_db_uid), history))
+        
+        # Log chat exchange to file
+        log_chat_exchange(
+            http_request,
+            conv_id=conv_id,
+            user_id=request.user_id,
+            role=effective_role,
+            channel=topic,
+            user_message=request.message,
+            system_prompt=system_prompt,
+            bot_response=bot_response,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            cost_usd=usage.get("cost_usd")
+        )
         
         from utils import now_local
         print(f"   🤖 Bot: {bot_response[:100]}{'...' if len(bot_response) > 100 else ''}")
@@ -348,17 +435,14 @@ def get_latest_conversation():
 
 @app.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str):
-    """Get conversation history from database"""
+    """Get conversation history from database. Returns empty history if not found (no 404)."""
     history = ConversationDB.get_conversation_history(conversation_id, limit=100)
     
-    if not history:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    
-    # Convert to format expected by frontend
+    # Convert to format expected by frontend (empty list if not found)
     formatted_history = [
         {"role": msg["role"], "content": msg["content"], "timestamp": msg["created_at"]}
         for msg in history
-    ]
+    ] if history else []
     
     return {"conversation_id": conversation_id, "history": formatted_history}
 
@@ -403,7 +487,7 @@ def list_messages(page: int = 1, per_page: int = 20, role: str = None):
         ).fetchone()[0]
 
         rows = cursor.execute(f"""
-            SELECT m.id, m.sender, m.content, m.input_tokens, m.output_tokens, m.cost_usd,
+            SELECT m.id, m.sender, m.channel, m.content, m.prompt, m.input_tokens, m.output_tokens, m.cost_usd,
                    m.created_at, m.conversation_id, m.user_id
             FROM messages m
             {where}

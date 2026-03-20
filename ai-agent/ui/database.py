@@ -46,10 +46,10 @@ def init_database():
         """)
         
         # Messages table
-        # If old schema (missing 'sender' column) exists, drop and recreate
+        # If old schema (missing 'sender', 'prompt' or 'channel' column) exists, drop and recreate
         cursor.execute("PRAGMA table_info(messages)")
         _msg_cols = [r["name"] for r in cursor.fetchall()]
-        if "role" in _msg_cols or "sender" not in _msg_cols:
+        if "role" in _msg_cols or "sender" not in _msg_cols or "prompt" not in _msg_cols or "channel" not in _msg_cols:
             cursor.execute("DROP TABLE IF EXISTS messages")
 
         cursor.execute("""
@@ -58,7 +58,9 @@ def init_database():
                 user_id         INTEGER REFERENCES users(id),
                 conversation_id TEXT NOT NULL,
                 sender          TEXT NOT NULL DEFAULT 'user', -- 'user' | 'bot'
+                channel         TEXT,  -- 'business' or 'documents' (topic selected)
                 content         TEXT NOT NULL,
+                prompt          TEXT,  -- System prompt used for this message (for bot messages)
                 input_tokens    INTEGER,
                 output_tokens   INTEGER,
                 cost_usd        REAL,
@@ -68,6 +70,7 @@ def init_database():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_sender  ON messages(sender)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel)")
         
         # Usage stats table
         cursor.execute("""
@@ -289,10 +292,14 @@ class ConversationDB:
                     input_tokens: Optional[int] = None,
                     output_tokens: Optional[int] = None,
                     cost_usd: Optional[float] = None,
-                    user_id: Optional[int] = None):
+                    user_id: Optional[int] = None,
+                    prompt: Optional[str] = None,
+                    channel: Optional[str] = None):
         """Add message to conversation.
         sender: 'user' for human messages, 'bot' for assistant replies.
         user_id should be set for BOTH user and bot turns (so history filters work by user).
+        prompt: System prompt used (usually for bot messages).
+        channel: 'business' or 'documents' (topic selected).
         """
         with get_db() as conn:
             cursor = conn.cursor()
@@ -305,9 +312,9 @@ class ConversationDB:
 
             # Insert message
             cursor.execute("""
-                INSERT INTO messages (user_id, conversation_id, sender, content, input_tokens, output_tokens, cost_usd)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, conversation_id, sender, content, input_tokens, output_tokens, cost_usd))
+                INSERT INTO messages (user_id, conversation_id, sender, channel, content, prompt, input_tokens, output_tokens, cost_usd)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, conversation_id, sender, channel, content, prompt, input_tokens, output_tokens, cost_usd))
     
     @staticmethod
     def get_conversation_history(conversation_id: str, limit: int = 50) -> List[Dict[str, Any]]:
