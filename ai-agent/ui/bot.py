@@ -140,6 +140,9 @@ def chat_with_claude(user_message, conversation_history=None, conversation_id=No
     # Accumulate token usage across all API calls (incl. tool-use rounds)
     _total_input = 0
     _total_output = 0
+    
+    # Collect SQL queries executed by tools
+    sql_queries = []
 
     # Call Claude with tools
     response = client.messages.create(
@@ -184,6 +187,8 @@ def chat_with_claude(user_message, conversation_history=None, conversation_id=No
         if tool_use_block.name in ["query_invoices", "get_orders"] and isinstance(tool_result, dict):
             sql_debug = tool_result.get("_debug") or tool_result.get("sql")
             if sql_debug:
+                # Collect SQL query for logging
+                sql_queries.append(sql_debug)
                 # Save SQL query as debug message (no user_id needed for debug logs)
                 try:
                     ConversationDB.add_message(
@@ -253,7 +258,7 @@ def chat_with_claude(user_message, conversation_history=None, conversation_id=No
     _cost = (_total_input * _pricing["input"] + _total_output * _pricing["output"]) / 1_000_000
     usage = {"input_tokens": _total_input, "output_tokens": _total_output, "cost_usd": round(_cost, 6)}
 
-    return final_response, conversation_history, usage
+    return final_response, conversation_history, usage, sql_queries
 
 
 if __name__ == "__main__":
@@ -268,5 +273,5 @@ if __name__ == "__main__":
         if user_input.lower() in ["exit", "quit"]:
             break
         
-        response, history = chat_with_claude(user_input, history)
+        response, history, usage, sql_queries = chat_with_claude(user_input, history)
         print(f"\nBot: {response}")

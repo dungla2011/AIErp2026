@@ -57,11 +57,24 @@ def get_client_ip(request):
 
 def log_chat_exchange(request, conv_id: str, user_id: Optional[int], role: str, channel: str,
                       user_message: str, system_prompt: str, bot_response: str,
-                      input_tokens: Optional[int], output_tokens: Optional[int], cost_usd: Optional[float]):
+                      input_tokens: Optional[int], output_tokens: Optional[int], cost_usd: Optional[float],
+                      sql_queries: Optional[list] = None):
     """Log chat exchange to chats.log file"""
     try:
         client_ip = get_client_ip(request)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Format SQL queries section from the list passed from AI execution
+        sql_section = ""
+        if sql_queries:
+            sql_text = "\n".join(sql_queries)
+            sql_section = f"""
+{'─'*80}
+[SQL QUERIES EXECUTED]
+{'─'*80}
+{sql_text}
+
+"""
         
         log_entry = f"""
 {'='*80}
@@ -88,7 +101,7 @@ def log_chat_exchange(request, conv_id: str, user_id: Optional[int], role: str, 
 {'─'*80}
 {bot_response}
 
-{'─'*80}
+{sql_section}{'─'*80}
 [TOKENS & COST]
 {'─'*80}
 💬 Input Tokens: {input_tokens or '—'}
@@ -334,7 +347,7 @@ async def chat(request: ChatRequest, http_request: Request):
         ConversationDB.add_message(conv_id, content=request.message, sender='user', user_id=_db_uid, channel=topic)
         
         # Get bot response (run sync function in thread to not block event loop)
-        bot_response, history, usage = await asyncio.to_thread(
+        bot_response, history, usage, sql_queries = await asyncio.to_thread(
             chat_with_claude, request.message, history, conv_id,
             user_memory, retrieved_context, effective_role, restricted_access, topic
         )
@@ -371,7 +384,8 @@ async def chat(request: ChatRequest, http_request: Request):
             bot_response=bot_response,
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
-            cost_usd=usage.get("cost_usd")
+            cost_usd=usage.get("cost_usd"),
+            sql_queries=sql_queries
         )
         
         from utils import now_local
