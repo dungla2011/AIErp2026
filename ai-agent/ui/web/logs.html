@@ -144,6 +144,11 @@
         let API_URL = "{{API_URL}}".includes('{{') 
             ? `http://${window.location.hostname}:${apiPort}` 
             : "{{API_URL}}";
+        
+        // If API_URL contains localhost but we're on external IP, replace it
+        if (API_URL.includes('localhost') && !window.location.hostname.includes('localhost')) {
+            API_URL = `http://${window.location.hostname}:${apiPort}`;
+        }
 
         async function refreshLogs() {
             try {

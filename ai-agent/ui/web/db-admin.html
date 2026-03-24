@@ -343,9 +343,15 @@
     <script>
         // Get API_URL from template injection by web_server.py
         const apiPort = "{{API_PORT}}".includes('{{') ? 8100 : parseInt("{{API_PORT}}");
-        const API_URL = "{{API_URL}}".includes('{{') 
+        const API_URL_TEMPLATE = "{{API_URL}}".includes('{{') 
             ? `http://${window.location.hostname}:${apiPort}` 
             : "{{API_URL}}";
+        
+        // If API_URL contains localhost but we're on external IP, replace it
+        let API_URL = API_URL_TEMPLATE;
+        if (API_URL.includes('localhost') && !window.location.hostname.includes('localhost')) {
+            API_URL = `http://${window.location.hostname}:${apiPort}`;
+        }
         
         console.log(`🔌 Database Admin - API_URL: ${API_URL}`);
         
