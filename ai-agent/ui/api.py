@@ -781,6 +781,251 @@ def list_categories():
     return [dict(r) for r in rows]
 
 
+# ── Database CRUD Management (Admin Only) ─────────────────────────────────
+class DBRecord(BaseModel):
+    table: str
+    data: dict
+
+@app.get("/db/tables")
+def get_database_tables():
+    """List all tables in bot_data.db SQLite
+    
+    Note: This API only manages SQLite (bot_data.db).
+    SQL Server tables (kava_pos.dbo.*) are managed separately via /invoice-stats and /orders endpoints.
+    """
+    try:
+        with get_db() as conn:
+            tables = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            ).fetchall()
+        result = {"tables": [t["name"] for t in tables]}
+        result["note"] = "SQLite tables only. SQL Server tables: /orders, /invoice-stats"
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/db/{table_name}")
+def get_table_data(table_name: str, limit: int = 100, offset: int = 0):
+    """Get records from a table with pagination"""
+    try:
+        # Dynamically check if table exists (no hardcoded whitelist)
+        with get_db() as conn:
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found in SQLite")
+            
+            # Get column info
+            cols = conn.cursor().execute(f"PRAGMA table_info({table_name})").fetchall()
+            columns = [c["name"] for c in cols]
+            
+            # Get total count
+            count_result = conn.cursor().execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()
+            total = count_result["cnt"] if count_result else 0
+            
+            # Get paginated data
+            rows = conn.cursor().execute(
+                f"SELECT * FROM {table_name} ORDER BY rowid DESC LIMIT ? OFFSET ?",
+                (limit, offset)
+            ).fetchall()
+        
+        # Convert rows to dicts, handling encoding issues
+        def safe_convert(value):
+            """Convert value safely, handling encoding issues & binary data"""
+            if isinstance(value, bytes):
+                try:
+                    return value.decode('utf-8')
+                except UnicodeDecodeError:
+                    # Binary data - convert to hex
+                    hex_str = value.hex()
+                    if len(hex_str) > 100:
+                        return f"0x{hex_str[:100]}... ({len(value)} bytes)"
+                    return f"0x{hex_str}"
+            return value
+        
+        safe_rows = []
+        for row in rows:
+            row_dict = dict(row)
+            safe_rows.append({k: safe_convert(v) for k, v in row_dict.items()})
+        
+        return {
+            "table": table_name,
+            "columns": columns,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "rows": safe_rows
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/db/{table_name}/count")
+def get_table_count(table_name: str):
+    """Get total record count for a table"""
+    try:
+        with get_db() as conn:
+            # Check if table exists dynamically
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            
+            result = conn.cursor().execute(f"SELECT COUNT(*) AS cnt FROM {table_name}").fetchone()
+        
+        return {"table": table_name, "count": result["cnt"] if result else 0}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/db/{table_name}")
+def insert_record(table_name: str, record: dict):
+    """Insert a new record into a table"""
+    try:
+        with get_db() as conn:
+            # Check if table exists dynamically
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            
+            # Get columns
+            cols = conn.cursor().execute(f"PRAGMA table_info({table_name})").fetchall()
+            column_names = [c["name"] for c in cols]
+            
+            # Filter record to only include valid columns
+            filtered_record = {k: v for k, v in record.items() if k in column_names}
+            
+            if not filtered_record:
+                raise HTTPException(status_code=400, detail="No valid fields provided")
+            
+            # Build INSERT query
+            keys = list(filtered_record.keys())
+            values = list(filtered_record.values())
+            placeholders = ",".join(["?" for _ in keys])
+            
+            conn.cursor().execute(
+                f"INSERT INTO {table_name} ({','.join(keys)}) VALUES ({placeholders})",
+                values
+            )
+        
+        return {"ok": True, "message": f"Record inserted into {table_name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/db/{table_name}/{record_id}")
+def update_record(table_name: str, record_id: str, updates: dict):
+    """Update a record in a table"""
+    try:
+        with get_db() as conn:
+            # Check if table exists dynamically
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            
+            # Get columns
+            cols = conn.cursor().execute(f"PRAGMA table_info({table_name})").fetchall()
+            column_names = [c["name"] for c in cols]
+            
+            # Filter updates to only include valid columns
+            filtered_updates = {k: v for k, v in updates.items() if k in column_names and k != "id"}
+            
+            if not filtered_updates:
+                raise HTTPException(status_code=400, detail="No valid fields to update")
+            
+            # Build UPDATE query
+            set_clause = ",".join([f"{k}=?" for k in filtered_updates.keys()])
+            values = list(filtered_updates.values()) + [record_id]
+            
+            result = conn.cursor().execute(
+                f"UPDATE {table_name} SET {set_clause} WHERE id=?",
+                values
+            )
+            
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail=f"Record not found in {table_name}")
+        
+        return {"ok": True, "message": f"Record updated in {table_name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/db/{table_name}/{record_id}")
+def delete_record(table_name: str, record_id: str):
+    """Delete a record from a table"""
+    try:
+        with get_db() as conn:
+            # Check if table exists dynamically
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            
+            result = conn.cursor().execute(
+                f"DELETE FROM {table_name} WHERE id=?",
+                (record_id,)
+            )
+            
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail=f"Record not found in {table_name}")
+        
+        return {"ok": True, "message": f"Record deleted from {table_name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/db/{table_name}/truncate")
+def truncate_table(table_name: str, confirm: bool = False):
+    """Delete all records from a table (requires confirm=true)"""
+    try:
+        if not confirm:
+            raise HTTPException(status_code=400, detail="Must pass confirm=true to truncate table")
+        
+        with get_db() as conn:
+            # Check if table exists dynamically
+            table_check = conn.cursor().execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            ).fetchone()
+            
+            if not table_check:
+                raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+            
+            # Protect certain tables
+            protected_tables = ["conversations", "messages", "usage_stats", "user_memory"]
+            if table_name in protected_tables:
+                raise HTTPException(status_code=403, detail=f"Cannot truncate {table_name} - protected table")
+            
+            conn.cursor().execute(f"DELETE FROM {table_name}")
+        
+        return {"ok": True, "message": f"All records deleted from {table_name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/")
 def root():

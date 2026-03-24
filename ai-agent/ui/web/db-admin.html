@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗄️ Database Admin - Bot MVP</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #f8f9fa;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .app-navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .app-navbar .navbar-brand {
+            color: white !important;
+            font-weight: bold;
+            font-size: 1.3rem;
+        }
+        .app-navbar .nav-link {
+            color: rgba(255,255,255,0.85) !important;
+            transition: all 0.3s;
+        }
+        .app-navbar .nav-link:hover,
+        .app-navbar .nav-link.active {
+            color: white !important;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+        }
+        .app-navbar .usage-pill {
+            background: rgba(0,0,0,0.2);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            color: white;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .stat-item {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .stat-label {
+            opacity: 0.8;
+            font-weight: 500;
+        }
+        .stat-value {
+            font-weight: bold;
+        }
+        .stat-sep {
+            opacity: 0.5;
+        }
+
+        /* Layout 2-column */
+        .container-fluid {
+            display: flex;
+            margin-top: 0 !important;
+            height: calc(100vh - 100px);
+            padding: 0 !important;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: white;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 15px 0;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+        }
+
+        .sidebar-title {
+            padding: 0 15px 10px;
+            font-weight: 600;
+            color: #667eea;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 15px;
+        }
+
+        .sidebar-item {
+            padding: 10px 15px;
+            border-left: 4px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+
+        .sidebar-item:hover {
+            background: #f5f5f5;
+            border-left-color: #667eea;
+        }
+
+        .sidebar-item.active {
+            background: #f0f0ff;
+            border-left-color: #667eea;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .sidebar-item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sidebar-item-count {
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex: 1;
+            background: #f8f9fa;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .table-view {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .table-view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .table-view-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .table-view-stats {
+            display: flex;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .stat-pill {
+            background: #f0f0f0;
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: #555;
+        }
+
+        .records-table {
+            font-size: 0.9rem;
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .records-table thead {
+            background: #f8f9fa;
+        }
+
+        .records-table th {
+            font-weight: 600;
+            color: #667eea;
+            padding: 10px 8px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .records-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .records-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .action-buttons .btn {
+            padding: 4px 8px;
+            font-size: 0.8rem;
+        }
+
+        .pagination-controls {
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pagination-controls button {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            opacity: 0.5;
+        }
+
+        .field-group {
+            margin-bottom: 12px;
+        }
+
+        .field-group label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .field-group input,
+        .field-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        .field-group textarea {
+            min-height: 60px;
+            resize: vertical;
+        }
+
+        .field-group input:focus,
+        .field-group textarea:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+
+        .no-table-selected {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav id="app-nav" class="navbar app-navbar navbar-expand-lg" data-active="db-admin"></nav>
+
+    <!-- Main Layout: Sidebar + Content -->
+    <div class="container-fluid">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-title">📊 Bảng Dữ Liệu</div>
+            <div id="sidebarTables" class="">⏳ Đang tải...</div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div id="mainContent">
+                <div class="no-table-selected">
+                    <div>
+                        <p style="font-size: 1.1rem;">👈 Chọn một bảng từ bên trái để bắt đầu</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Record Modal -->
+    <div class="modal fade" id="recordModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="recordModalTitle">View/Edit Record</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="recordModalBody" style="max-height: 70vh; overflow-y: auto;">
+                    <!-- Dynamically populated -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-primary" id="recordSaveBtn" onclick="saveRecord()">💾 Lưu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">⚠️ Xác nhận xóa</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Bạn chắc chắn muốn xóa record này? Hành động này không thể hoàn tác.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDelete()">🗑️ Xóa</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="api.js"></script>
+    <script src="nav.js"></script>
+
+    <script>
+        // Get API_URL from template injection by web_server.py
+        const API_URL = "{{API_URL}}".includes('{{') 
+            ? `http://${window.location.hostname}:{{API_PORT}}` 
+            : "{{API_URL}}";
+        
+        console.log(`🔌 Database Admin - API_URL: ${API_URL}`);
+        
+        let currentTable = null;
+        let currentRecordId = null;
+        let currentRecordData = null;
+        let tableCache = {};
+        let allTables = [];
+
+        async function init() {
+            initNav(API_URL);
+            
+            // Get table from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const tableParam = urlParams.get('table');
+            
+            // Load tables list
+            await loadTablesList();
+            
+            // Load specific table if in URL
+            if (tableParam && allTables.includes(tableParam)) {
+                selectTable(tableParam);
+            }
+        }
+
+        async function loadTablesList() {
+            try {
+                const res = await fetch(`${API_URL}/db/tables`, { headers: getAuthHeaders() });
+                const data = await res.json();
+                allTables = data.tables;
+                
+                // Render sidebar with all tables
+                const html = allTables.map(table => `
+                    <div class="sidebar-item" id="sidebar-${table}" onclick="selectTable('${table}')">
+                        <span class="sidebar-item-name">📋 ${table}</span>
+                        <span class="sidebar-item-count" id="count-${table}">0</span>
+                    </div>
+                `).join("");
+                
+                document.getElementById('sidebarTables').innerHTML = html;
+                
+                // Load counts for all tables
+                await loadAllTableCounts();
+            } catch (e) {
+                console.error("Error loading tables:", e);
+                document.getElementById('sidebarTables').innerHTML = `
+                    <div style="padding: 10px; color: #d32f2f; font-size: 0.9rem;">
+                        ❌ ${e.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function loadAllTableCounts() {
+            for (const table of allTables) {
+                try {
+                    const res = await fetch(`${API_URL}/db/${table}/count`, { headers: getAuthHeaders() });
+                    const data = await res.json();
+                    const countEl = document.getElementById(`count-${table}`);
+                    if (countEl) countEl.textContent = data.count || 0;
+                } catch (e) {
+                    console.error(`Error loading count for ${table}:`, e);
+                }
+            }
+        }
+
+        async function selectTable(table) {
+            currentTable = table;
+            
+            // Update sidebar highlight
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(`sidebar-${table}`).classList.add('active');
+            
+            // Update URL
+            const url = new URL(window.location);
+            url.searchParams.set('table', table);
+            window.history.pushState({}, '', url);
+            
+            // Load and render table data
+            await loadTableData(table, 50, 0);
+        }
+
+        async function loadTableData(table, limit = 50, offset = 0) {
+            try {
+                const res = await fetch(`${API_URL}/db/${table}?limit=${limit}&offset=${offset}`, 
+                    { headers: getAuthHeaders() });
+                const data = await res.json();
+                
+                tableCache[table] = {
+                    ...data,
+                    currentLimit: limit,
+                    currentOffset: offset
+                };
+
+                renderTableView(table, data);
+            } catch (e) {
+                console.error(`Error loading ${table}:`, e);
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="alert alert-danger">❌ Lỗi: ${e.message}</div>
+                `;
+            }
+        }
+
+        function renderTableView(table, data) {
+            const columns = data.columns || [];
+            const rows = data.rows || [];
+            
+            let html = `
+                <div class="table-view">
+                    <div class="table-view-header">
+                        <div class="table-view-title">📊 ${table}</div>
+                        <div class="table-view-stats">
+                            <div class="stat-pill">📈 ${data.total} bản ghi</div>
+                            <div class="stat-pill">📋 ${columns.length} cột</div>
+                        </div>
+                    </div>
+            `;
+            
+            if (rows.length === 0) {
+                html += `
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <p>Không có dữ liệu</p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="pagination-controls">
+                        <div>
+                            <span style="font-size: 0.9rem;">
+                                Hiển thị ${data.currentOffset + 1}-${Math.min(data.currentOffset + data.currentLimit, data.total)} 
+                                trong ${data.total} bản ghi
+                            </span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="prevPage('${table}')" 
+                                    ${data.currentOffset === 0 ? 'disabled' : ''}>← Trước</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="nextPage('${table}')" 
+                                    ${data.currentOffset + data.currentLimit >= data.total ? 'disabled' : ''}>Sau →</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm records-table">
+                            <thead>
+                                <tr>
+                                    ${columns.map(col => `<th>${col}</th>`).join('')}
+                                    <th style="width: 100px;">Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows.map(row => `
+                                    <tr>
+                                        ${columns.map(col => `<td style="word-break: break-all; max-width: 200px;">${formatValue(row[col])}</td>`).join('')}
+                                        <td>
+                                            <div class="action-buttons">
+                                                <button class="btn btn-sm btn-primary" onclick="editRecord('${table}', ${JSON.stringify(row).replace(/'/g, '&#39;')})">✏️</button>
+                                                <button class="btn btn-sm btn-danger" onclick="deleteRecord('${table}', '${row.id || row.user_id}')">🗑️</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            
+            html += `</div>`;
+            document.getElementById('mainContent').innerHTML = html;
+        }
+
+        function formatValue(val) {
+            if (val === null || val === undefined) return '—';
+            if (typeof val === 'string' && val.length > 100) return val.substring(0, 100) + '...';
+            return String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        async function prevPage(table) {
+            const cache = tableCache[table];
+            if (cache.currentOffset > 0) {
+                await loadTableData(table, cache.currentLimit, Math.max(0, cache.currentOffset - cache.currentLimit));
+            }
+        }
+
+        async function nextPage(table) {
+            const cache = tableCache[table];
+            if (cache.currentOffset + cache.currentLimit < cache.total) {
+                await loadTableData(table, cache.currentLimit, cache.currentOffset + cache.currentLimit);
+            }
+        }
+
+        function editRecord(table, row) {
+            currentTable = table;
+            currentRecordId = row.id || row.user_id;
+            currentRecordData = { ...row };
+            
+            const columns = Object.keys(row);
+            let html = '';
+            
+            columns.forEach(col => {
+                html += `
+                    <div class="field-group">
+                        <label>${col}</label>
+                        <input type="text" name="${col}" value="${String(row[col] || '').replace(/"/g, '&quot;')}" 
+                               ${col === 'id' || col === 'user_id' ? 'disabled' : ''}>
+                    </div>
+                `;
+            });
+            
+            document.getElementById('recordModalTitle').textContent = `Edit ${table} - ID: ${currentRecordId}`;
+            document.getElementById('recordModalBody').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('recordModal')).show();
+        }
+
+        function saveRecord() {
+            const inputs = document.querySelectorAll('#recordModalBody input:not([disabled])');
+            const updates = {};
+            
+            inputs.forEach(input => {
+                updates[input.name] = input.value;
+            });
+            
+            fetch(`${API_URL}/db/${currentTable}/${currentRecordId}`, {
+                method: 'PUT',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert('✅ Record updated!');
+                bootstrap.Modal.getInstance(document.getElementById('recordModal')).hide();
+                loadTableData(currentTable, tableCache[currentTable].currentLimit, tableCache[currentTable].currentOffset);
+                loadAllTableCounts();
+            })
+            .catch(e => alert(`❌ Error: ${e.message}`));
+        }
+
+        function deleteRecord(table, id) {
+            currentTable = table;
+            currentRecordId = id;
+            new bootstrap.Modal(document.getElementById('deleteConfirmModal')).show();
+        }
+
+        function confirmDelete() {
+            fetch(`${API_URL}/db/${currentTable}/${currentRecordId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert('✅ Record deleted!');
+                bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+                loadTableData(currentTable, tableCache[currentTable].currentLimit, tableCache[currentTable].currentOffset);
+                loadAllTableCounts();
+            })
+            .catch(e => alert(`❌ Error: ${e.message}`));
+        }
+
+        // Wait for DOM to be ready, then call init()
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

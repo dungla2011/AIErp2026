@@ -241,7 +241,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             return
         
         # Serve app pages (after auth check)
-        app_pages = ['/index.html', '/stats.html', '/docs.html', '/admin.html', '/messages.html', '/settings.html']
+        app_pages = ['/index.html', '/stats.html', '/docs.html', '/admin.html', '/messages.html', '/settings.html', '/db-admin.html']
         if clean_path in app_pages:
             filename = clean_path.lstrip('/')
             try:
