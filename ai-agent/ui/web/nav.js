@@ -22,6 +22,7 @@
     { key: 'docs',     href: 'docs.html',     icon: '&#x1F4D6;', label: 'API Docs' },
     { key: 'admin',    href: 'admin.html',    icon: '&#x1F4C1;', label: 'Admin' },
     { key: 'db-admin', href: 'db-admin.html', icon: '&#x1F5C4;', label: 'Database' },
+    { key: 'logs',     href: 'logs.html',     icon: '&#x1F4DD;', label: 'Logs' },
     { key: 'settings', href: 'settings.html', icon: '&#x2699;&#xFE0F;', label: 'Settings' },
   ];
 

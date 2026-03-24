@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📋 Chat Logs - Bot MVP</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <link rel="stylesheet" href="style.css" />
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #f8f9fa;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .app-navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .app-navbar .navbar-brand {
+            color: white !important;
+            font-weight: bold;
+            font-size: 1.3rem;
+        }
+        .app-navbar .nav-link {
+            color: rgba(255,255,255,0.85) !important;
+            transition: all 0.3s;
+        }
+        .app-navbar .nav-link:hover,
+        .app-navbar .nav-link.active {
+            color: white !important;
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+        }
+        .logs-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 70px);
+        }
+        .logs-header {
+            padding: 15px 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .logs-content {
+            flex: 1;
+            background: #1e1e2e;
+            color: #d4d4d4;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            padding: 15px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        .logs-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        .logs-content::-webkit-scrollbar-track {
+            background: #2d2d44;
+        }
+        .logs-content::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+        .logs-content::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+        .btn-log {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+        .log-stats {
+            font-size: 0.85rem;
+            color: #666;
+            padding-left: 10px;
+            border-left: 2px solid #667eea;
+            min-width: 200px;
+        }
+        .loading-spinner {
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        .loading-spinner.active {
+            display: flex;
+        }
+        .spinner-border {
+            width: 1rem;
+            height: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation: injected by nav.js -->
+    <nav id="app-nav" class="navbar app-navbar navbar-expand-lg" data-active="logs"></nav>
+
+    <!-- Logs Container -->
+    <div class="logs-container">
+        <!-- Header: Controls -->
+        <div class="logs-header">
+            <button class="btn btn-sm btn-primary btn-log" onclick="refreshLogs()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+            <button class="btn btn-sm btn-success btn-log" onclick="gotoEnd()">
+                <i class="fas fa-arrow-down"></i> End
+            </button>
+            <button class="btn btn-sm btn-info btn-log" onclick="gotoStart()">
+                <i class="fas fa-arrow-up"></i> Start
+            </button>
+            <div class="loading-spinner" id="loadingSpinner">
+                <div class="spinner-border spinner-border-sm text-primary"></div>
+                <span>Loading...</span>
+            </div>
+            <div class="log-stats" id="logStats">
+                Total: 0 KB | Showing: 10000 chars
+            </div>
+        </div>
+
+        <!-- Content: Log Display -->
+        <div class="logs-content" id="logsContent">
+            Initializing logs viewer...
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="api.js"></script>
+    <script src="nav.js"></script>
+
+    <script>
+        const logsContent = document.getElementById('logsContent');
+        const logStats = document.getElementById('logStats');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        let API_URL = "{{API_URL}}".includes('{{') ? "http://localhost:8100" : "{{API_URL}}";
+
+        async function refreshLogs() {
+            try {
+                loadingSpinner.classList.add('active');
+                logsContent.innerHTML = 'Loading logs...';
+
+                const res = await fetch(`${API_URL}/logs/chats?chars=50000`, {
+                    headers: getAuthHeaders()
+                });
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                const { logs, total_size, returned_size } = data;
+
+                // Display logs
+                logsContent.innerHTML = logs || '(No logs available)';
+                
+                // Update stats
+                const totalKB = (total_size / 1024).toFixed(2);
+                logStats.innerHTML = `Total: ${totalKB} KB | Showing: ${returned_size} chars | Updated: ${new Date().toLocaleTimeString()}`;
+
+                // Auto-scroll to end
+                setTimeout(gotoEnd, 100);
+            } catch (e) {
+                console.error('Error loading logs:', e);
+                logsContent.innerHTML = `❌ Error loading logs:\n${e.message}`;
+                logStats.innerHTML = 'Error loading logs';
+            } finally {
+                loadingSpinner.classList.remove('active');
+            }
+        }
+
+        function gotoEnd() {
+            logsContent.scrollTop = logsContent.scrollHeight;
+        }
+
+        function gotoStart() {
+            logsContent.scrollTop = 0;
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                initNav(API_URL);
+                await refreshLogs();
+            } catch (e) {
+                console.error('Init error:', e);
+            }
+        });
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshLogs, 30000);
+    </script>
+</body>
+</html>

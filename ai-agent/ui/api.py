@@ -1027,6 +1027,37 @@ def truncate_table(table_name: str, confirm: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/logs/chats")
+def get_chat_logs(chars: int = 10000):
+    """Get last N characters from chats.log (default 10k)"""
+    try:
+        if not CHAT_LOG_FILE.exists():
+            return {"logs": "", "total_size": 0, "returned_size": 0}
+        
+        # Get file size
+        total_size = CHAT_LOG_FILE.stat().st_size
+        
+        # Read last N characters
+        with open(CHAT_LOG_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            if total_size > chars:
+                f.seek(total_size - chars)
+            logs = f.read()
+        
+        return {
+            "logs": logs,
+            "total_size": total_size,
+            "returned_size": len(logs),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        return {
+            "logs": f"Error reading logs: {str(e)}",
+            "total_size": 0,
+            "returned_size": 0,
+            "error": str(e)
+        }
+
+
 @app.get("/")
 def root():
     """API Info"""

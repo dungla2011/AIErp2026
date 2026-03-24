@@ -423,8 +423,8 @@
             url.searchParams.set('table', table);
             window.history.pushState({}, '', url);
             
-            // Load and render table data
-            await loadTableData(table, 50, 0);
+            // Load and render table data (30 per page)
+            await loadTableData(table, 30, 0);
         }
 
         async function loadTableData(table, limit = 50, offset = 0) {
@@ -478,11 +478,30 @@
                                 trong ${data.total} bản ghi
                             </span>
                         </div>
-                        <div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="goToFirstPage('${table}')" 
+                                    ${data.currentOffset === 0 ? 'disabled' : ''}>⏮️ Đầu</button>
                             <button class="btn btn-sm btn-outline-secondary" onclick="prevPage('${table}')" 
                                     ${data.currentOffset === 0 ? 'disabled' : ''}>← Trước</button>
+                            <select class="form-select form-select-sm" style="width: 120px;" onchange="goToPage('${table}', this.value)">
+                                <option value="">Trang...</option>
+                                ${(() => {
+                                    const totalPages = Math.ceil(data.total / data.currentLimit);
+                                    const currentPage = Math.floor(data.currentOffset / data.currentLimit);
+                                    let options = '';
+                                    for (let i = 0; i < totalPages && i < 100; i++) {
+                                        const start = i * data.currentLimit + 1;
+                                        const end = Math.min((i + 1) * data.currentLimit, data.total);
+                                        const selected = i === currentPage ? 'selected' : '';
+                                        options += `<option value="${i}" ${selected}>T${i + 1} (${start}-${end})</option>`;
+                                    }
+                                    return options;
+                                })()}
+                            </select>
                             <button class="btn btn-sm btn-outline-secondary" onclick="nextPage('${table}')" 
                                     ${data.currentOffset + data.currentLimit >= data.total ? 'disabled' : ''}>Sau →</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="goToLastPage('${table}')" 
+                                    ${data.currentOffset + data.currentLimit >= data.total ? 'disabled' : ''}>Cuối ⏭️</button>
                         </div>
                     </div>
                     <div class="table-responsive">
@@ -519,6 +538,25 @@
             if (val === null || val === undefined) return '—';
             if (typeof val === 'string' && val.length > 100) return val.substring(0, 100) + '...';
             return String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        async function goToFirstPage(table) {
+            const cache = tableCache[table];
+            await loadTableData(table, cache.currentLimit, 0);
+        }
+
+        async function goToLastPage(table) {
+            const cache = tableCache[table];
+            const totalPages = Math.ceil(cache.total / cache.currentLimit);
+            const lastOffset = Math.max(0, (totalPages - 1) * cache.currentLimit);
+            await loadTableData(table, cache.currentLimit, lastOffset);
+        }
+
+        async function goToPage(table, pageIndex) {
+            if (!pageIndex || pageIndex === '') return;
+            const cache = tableCache[table];
+            const offset = parseInt(pageIndex) * cache.currentLimit;
+            await loadTableData(table, cache.currentLimit, offset);
         }
 
         async function prevPage(table) {
