@@ -140,9 +140,9 @@
         const logStats = document.getElementById('logStats');
         const loadingSpinner = document.getElementById('loadingSpinner');
 
-        const API_PORT = "{{API_PORT}}".includes('{{') ? 8100 : parseInt("{{API_PORT}}");
+        const apiPort = "{{API_PORT}}".includes('{{') ? 8100 : parseInt("{{API_PORT}}");
         let API_URL = "{{API_URL}}".includes('{{') 
-            ? `http://${window.location.hostname}:${API_PORT}` 
+            ? `http://${window.location.hostname}:${apiPort}` 
             : "{{API_URL}}";
 
         async function refreshLogs() {
