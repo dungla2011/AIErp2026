@@ -246,10 +246,36 @@
       const savedRole = localStorage.getItem('chatUserRole');
       if (savedRole) document.getElementById('roleSelect').value = savedRole;
       // (no onchange — roleSelect is readonly, driven by nav user dropdown)
-      loadConversationHistory();
+      
+      // Wait for nav.js to restore user from cookie before loading conversation
+      setTimeout(() => {
+        loadConversationHistory();
+      }, 100);
+      
       updateUsageStats();
       checkApiHealth();
       messageInput.focus();
+
+      // Listen to nav user dropdown changes to reload chat history
+      setTimeout(() => {
+        const navUserSelect = document.getElementById('navUserSelect');
+        if (navUserSelect) {
+          navUserSelect.addEventListener('change', () => {
+            // Clear current chat and load history for newly selected user
+            conversationId = null;
+            messagesDiv.innerHTML = '';
+            loadConversationHistory();
+            
+            // Update role display
+            const user = window.getCurrentUser && window.getCurrentUser();
+            const roleSelect = document.getElementById('roleSelect');
+            if (user && roleSelect) {
+              roleSelect.value = user.role_id;
+              localStorage.setItem('chatUserRole', user.role_id);
+            }
+          });
+        }
+      }, 150);
 
       // Sync roleSelect + reload history when nav user changes
       window.addEventListener('navUserChanged', (e) => {
